@@ -1,17 +1,21 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET env var is required');
+function getJwtSecret(): Uint8Array {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET env var is required');
+  }
+  return new TextEncoder().encode(process.env.JWT_SECRET);
 }
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 // Secret ini HARUS sama persis dengan SSO_SECRET di aplikasi Great (HRIS),
 // dipakai untuk memverifikasi token SSO yang dikirim dari tombol "Masuk ke ERP".
-if (!process.env.SSO_SECRET) {
-  throw new Error('SSO_SECRET env var is required');
+function getSsoSecret(): Uint8Array {
+  if (!process.env.SSO_SECRET) {
+    throw new Error('SSO_SECRET env var is required');
+  }
+  return new TextEncoder().encode(process.env.SSO_SECRET);
 }
-const SSO_SECRET = new TextEncoder().encode(process.env.SSO_SECRET);
 
 const SESSION_COOKIE = 'erp_session_token';
 
@@ -30,12 +34,12 @@ export async function createSessionToken(user: UserSession): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('30d')
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 export async function verifySessionToken(token: string): Promise<UserSession | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return payload as unknown as UserSession;
   } catch {
     return null;
@@ -71,7 +75,7 @@ export async function clearSessionCookie(): Promise<void> {
  */
 export async function verifySsoToken(token: string): Promise<UserSession | null> {
   try {
-    const { payload } = await jwtVerify(token, SSO_SECRET);
+    const { payload } = await jwtVerify(token, getSsoSecret());
     return payload as unknown as UserSession;
   } catch {
     return null;

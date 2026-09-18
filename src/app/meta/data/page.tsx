@@ -1,5 +1,10 @@
+import { Suspense } from 'react';
 import MetaAdsPerformanceTable from '@/components/views/MetaAdsPerformanceTable';
 
 export default function MetaDataPage() {
-  return <MetaAdsPerformanceTable />;
+  return (
+    <Suspense>
+      <MetaAdsPerformanceTable />
+    </Suspense>
+  );
 }

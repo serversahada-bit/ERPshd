@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
@@ -18,7 +19,9 @@ export default function MetaLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex">
-      <MetaSidebar />
+      <Suspense>
+        <MetaSidebar />
+      </Suspense>
 
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-2xs px-4 sm:px-6 py-3">
@@ -41,7 +44,9 @@ export default function MetaLayout({ children }: { children: React.ReactNode }) 
               </div>
             </div>
 
-            <ProductSelector />
+            <Suspense>
+              <ProductSelector />
+            </Suspense>
           </div>
         </header>
 

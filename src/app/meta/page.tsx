@@ -1,5 +1,10 @@
+import { Suspense } from 'react';
 import MetaDashboardOverview from '@/components/views/MetaDashboardOverview';
 
 export default function MetaPage() {
-  return <MetaDashboardOverview />;
+  return (
+    <Suspense>
+      <MetaDashboardOverview />
+    </Suspense>
+  );
 }

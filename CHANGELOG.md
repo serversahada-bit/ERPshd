@@ -1,0 +1,136 @@
+# Changelog
+
+Catatan perubahan dan improvement pada project ERP ini. Setiap ada perubahan berarti (fitur baru, perbaikan bug, perubahan struktur database, dsb), tambahkan entri baru di paling atas dengan format:
+
+```
+## YYYY-MM-DD - Judul singkat
+- Detail perubahan 1
+- Detail perubahan 2
+```
+
+---
+
+## 2026-09-17 - Nama Konten auto-generate + kolom PIC disembunyikan (Script dan Konten)
+
+- Field "Nama Konten" di form Script dan Konten sekarang **otomatis ter-generate** (read-only, bukan input manual) dari Format, Funnel, Kategori, Stage Awareness, Angle, Creator, dan Tanggal Order — meniru rumus formula di spreadsheet asli user (yang punya catatan "Copy untuk nama konten & Iklan", artinya hasil itu juga dipakai sebagai nama iklan di Meta Ads Manager). Implementasi: `generateNamaKonten()` di [src/lib/scriptKonten.ts](src/lib/scriptKonten.ts), dipakai live di [ScriptKontenFormModal.tsx](src/components/views/ScriptKontenFormModal.tsx). Kosong sampai semua 7 field sumber terisi.
+- Kolom "PIC (NIK / Nama)" dihapus dari tampilan Tabel Script dan Konten ([ScriptKontenTable.tsx](src/components/views/ScriptKontenTable.tsx)) — datanya tetap tersimpan di database, cuma tidak ditampilkan di kolom tabel.
+
+## 2026-09-17 - Modul baru "Master Produk" di App Launcher
+
+- Kartu modul baru "Master Produk" (kategori "Master Data", grup Manajemen & Sistem) di grid utama `/` — klik masuk ke halaman [/produk](src/app/produk/page.tsx), CRUD jenis produk yang dipakai bersama lintas modul (Advertiser, Branding, Script & Konten, Meta Testing). Sebelumnya cuma bisa dikelola lewat gear icon kecil di dalam halaman Meta Ads (`ProductManageModal`), sekarang jadi modul mandiri yang lebih mudah ditemukan.
+- UI baru [ProductMasterView.tsx](src/components/views/ProductMasterView.tsx): daftar produk (nama, link Google Sheets, status aktif/nonaktif, hapus) + form tambah produk baru — reuse API `/api/meta-ads/products` yang sudah ada.
+- Ditambahkan field **Scalev Test Store ID** yang bisa diisi langsung per produk dari UI ini (sebelumnya cuma bisa di-set manual lewat script sekali pakai, seperti yang dilakukan untuk Gamamilk id=76353). `MetaAdsProduct` interface, route POST `/api/meta-ads/products`, dan PUT `/api/meta-ads/products/[id]` diperbarui untuk baca/tulis kolom ini.
+- `retailMenuData.ts`: total modul bertambah dari 10 ke 11, kategori baru `'produk'` ditambahkan ke grup "Manajemen & Sistem" (filter di `RetailAppLauncher.tsx` dan `ModulCatalogView.tsx` disesuaikan).
+- Diuji: insert/select langsung ke `meta_ads_products` dengan `scalev_test_store_id` terisi berhasil, dan halaman `/produk` + `/` dipastikan render tanpa error.
+
+## 2026-09-17 - Nama Konten Meta Testing disambungkan ke Script dan Konten + fix bug CPA
+
+- Field "Nama Konten" di form Meta Testing ([MetaTestingFormModal.tsx](src/components/views/MetaTestingFormModal.tsx)) sekarang punya autocomplete (`<datalist>`) yang menyarankan Nama Konten yang sudah ada di Script dan Konten untuk produk yang sama (fetch `/api/script-konten?productId=`, hanya baris yang `namaKonten`-nya sudah terisi). Tetap bisa ketik manual untuk konten yang belum tercatat di Script & Konten.
+- **Bug fix:** kolom CPA di auto-sync Meta Testing ([src/app/api/meta-testing/[id]/sync/route.ts](src/app/api/meta-testing/%5Bid%5D/sync/route.ts)) sebelumnya dihitung `Spending ÷ Closing` — ternyata salah. Setelah membaca rumus asli dari file XLSX sheet user (tab tersembunyi "META TESTING"), rumus yang benar adalah **`Spending ÷ Box`**. Sudah diperbaiki, plus `cpa_persen` sekarang ikut dihitung otomatis (`CPA ÷ 80.000 target CPM × 100`).
+- **Temuan besar:** sheet user ternyata punya tab "META TESTING" dan "Parameter" berisi rumus scoring LENGKAP (Skor CPR/CPM/CTR/Hook/Hold, Bonus Budget, Skor Konten, Skor CR/CPA%/Bonus Volume, Skor Konvert, Skor Total, Rank via `RANK()`, Grade A/B/C/D) beserta 26 parameter target & bobot yang bisa diubah user tanpa ubah rumus. Dibaca langsung dari XML internal file .xlsx (CSV export tidak menyimpan formula, jadi didownload sebagai .xlsx lalu di-unzip manual). **Belum diimplementasikan ke kode** — user diberi pilihan untuk mengaktifkan otomatisasi ini, keputusan masih ditunggu.
+
+## 2026-09-17 - Import data Script & Konten dari Google Sheets
+
+- Tombol "Import Spreadsheet" di halaman Script dan Konten — sama pola dengan import Meta Ads yang sudah ada: paste link Google Sheets (sheet harus dibagikan "siapa saja yang punya link bisa lihat"), kolom dicocokkan berdasarkan **nama header** (bukan posisi kolom), jadi tahan terhadap reorder kolom tapi gagal jelas kalau nama header berubah/dihapus.
+- Klien parser baru [src/lib/scriptKontenImport.ts](src/lib/scriptKontenImport.ts) + route [src/app/api/script-konten/import/route.ts](src/app/api/script-konten/import/route.ts). Reuse `buildCsvExportUrl`/`parseCsv` dari `googleSheetImport.ts` (generik, tidak spesifik Meta Ads).
+- Kolom PRODUK di sheet pakai kode singkat (mis. "GM") — sistem otomatis pakai produk yang terdaftar kalau cuma ada 1 produk; kalau ada beberapa produk nanti, dicocokkan by nama, fallback ke produk pertama dengan warning kalau tidak yakin.
+- Tanggal di sheet ini pakai format singkat Indonesia ("Sab, 29 Agu 26"), beda dari format sheet Meta Ads — ditambahkan parser baru `parseIndonesianDateShort()`.
+- Ditemukan dari data sheet asli: nilai FUNNEL sebenarnya "TOFU/MOFU/BOFU" (bukan "TOF/MOF/BOF" yang saya asumsikan sebelumnya) dan ada status "READY POST" yang belum ada di daftar STATUS_OPTIONS — keduanya sudah diperbaiki di [src/lib/scriptKonten.ts](src/lib/scriptKonten.ts) (funnel di `metaTesting.ts` juga ikut disamakan) supaya dropdown formulir cocok dengan istilah yang sudah dipakai user.
+- **Penting (disampaikan ke user):** import ini dirancang untuk migrasi satu kali dari spreadsheet lama — tidak ada upsert/dedup, jadi menjalankan import berkali-kali untuk sheet yang sama akan menambah baris duplikat, bukan menimpa. Setelah data lama dipindah, alur kerja selanjutnya sepenuhnya lewat form/board di web app ini.
+- Diuji: dry-run parsing langsung ke sheet asli user (66 baris valid ditemukan, semua 19 header kolom + kolom PRODUK cocok, tanggal & teks script multi-baris terbaca benar) tanpa menyentuh database — logic parsing dipastikan benar sebelum dipasang ke endpoint.
+
+## 2026-09-17 - 4 tampilan tambahan: Kalender, Gallery, List, Timeline
+
+- Toggle tampilan Script dan Konten sekarang punya 6 mode: Papan, Tabel, **Kalender**, **Gallery**, **List**, **Timeline** (gaya multi-view Notion/Airtable).
+  - [ScriptKontenCalendar.tsx](src/components/views/ScriptKontenCalendar.tsx) — grid bulan berdasarkan Tanggal Order, klik kartu untuk edit, navigasi bulan sebelum/sesudah + tombol "Hari Ini".
+  - [ScriptKontenGallery.tsx](src/components/views/ScriptKontenGallery.tsx) — grid kartu besar dengan "cover" warna sesuai Format (Reels/Image/Carousel/dst), karena belum ada gambar asli per konten.
+  - [ScriptKontenList.tsx](src/components/views/ScriptKontenList.tsx) — daftar ringkas satu baris per konten, minimalis.
+  - [ScriptKontenTimeline.tsx](src/components/views/ScriptKontenTimeline.tsx) — garis waktu horizontal, bar dari Tanggal Order sampai Tanggal ACC Konten (bar putus-putus kalau belum ACC = masih berjalan).
+  - Konten tanpa Tanggal Order otomatis disembunyikan dari Kalender & Timeline, dengan keterangan jumlahnya di bawah.
+- Helper warna status/format dipusatkan ke [src/lib/scriptKonten.ts](src/lib/scriptKonten.ts) (`statusBadgeClass`, `statusBarColorClass`, `formatAccentClass`) supaya konsisten dipakai di Table, Board, Calendar, Gallery, List, Timeline tanpa duplikasi logic warna di tiap komponen.
+
+## 2026-09-17 - Tampilan Board Kanban (gaya Notion/Trello) untuk Script dan Konten
+
+- Halaman Script dan Konten sekarang punya toggle **Papan / Tabel**. Papan = board Kanban, kolom berdasarkan STATUS (Draft, Briefing, Proses Produksi, Review, Revisi, ACC, Sudah Upload) — kartu bisa di-drag antar kolom untuk ganti status (native HTML5 drag & drop, tidak nambah library baru). Klik kartu untuk buka form edit lengkap.
+- Ada kotak "Tambah Ide" cepat di atas board — cukup ketik judul/ide lalu Enter, langsung jadi kartu baru di kolom Draft (tanpa perlu isi form panjang dulu). Field lain diisi belakangan lewat form edit.
+- Refactor: fetch data & modal state dipindah ke [ScriptKontenWorkspace.tsx](src/components/views/ScriptKontenWorkspace.tsx) (komponen baru, jadi single source of truth), [ScriptKontenTable.tsx](src/components/views/ScriptKontenTable.tsx) disederhanakan jadi presentational-only (terima props, tidak fetch sendiri), board baru di [ScriptKontenBoard.tsx](src/components/views/ScriptKontenBoard.tsx). Ditambah `STATUS_OPTIONS` & `rowToPayload()` di [src/lib/scriptKonten.ts](src/lib/scriptKonten.ts) supaya drag & drop bisa kirim PUT lengkap tanpa duplikasi daftar status.
+- Drag & drop pakai optimistic update (UI langsung pindah kartu, di-rollback kalau API gagal).
+
+## 2026-09-17 - Menu "Script dan Konten" di Branding (sebelum Meta Testing)
+
+- Item sidebar baru "Script dan Konten" ditambahkan di [BrandingSidebar.tsx](src/components/BrandingSidebar.tsx), diposisikan tepat sebelum "Meta Testing" — route `/branding/script-konten`. Alur kerja: brief & naskah konten dibuat di sini dulu, baru performanya ditest & discore di Meta Testing.
+- Tabel baru `script_konten` di `erp_sahada`, kolom sesuai struktur yang diberikan user: `tanggal_order`, `judul`, `product_id` (FK ke `meta_ads_products`), `cep`, `funnel`, `kategori`, `stage_awareness` (5 tahap awareness Eugene Schwartz: Completely Unaware s/d Most Aware — cocok dengan penamaan iklan yang sudah dipakai user di Meta Ads Manager), `angle`, `type_hook`, `format`, `eksekusi`, `script`, `creator`, `link_konten`, `status`, `tanggal_acc_konten`, `nama_konten`, `matriks_perolehan`, `analisis_evaluasi`, `iterasi`, plus `id_karyawan`/`nama_karyawan` (otomatis dari sesi login, pola sama seperti `meta_testing`). DDL di [scripts/sql/2026-09-17-create-script-konten.sql](scripts/sql/2026-09-17-create-script-konten.sql).
+- Model & mapping di [src/lib/scriptKonten.ts](src/lib/scriptKonten.ts), API `GET/POST /api/script-konten` + `PUT/DELETE /api/script-konten/[id]`, UI tabel+form di [ScriptKontenTable.tsx](src/components/views/ScriptKontenTable.tsx) & [ScriptKontenFormModal.tsx](src/components/views/ScriptKontenFormModal.tsx) (field panjang seperti Script/Eksekusi/Analisis pakai textarea).
+- Data masih 100% input manual (belum ada integrasi API seperti Meta Testing) — sesuai konteks permintaan, ini murni tahap perencanaan/naskah sebelum konten jadi dan ditest.
+- Diuji: INSERT + SELECT (JOIN ke `meta_ads_products`) + DELETE lewat script sekali-pakai langsung ke `erp_sahada`, dan halaman `/branding/script-konten` dipastikan render (redirect ke login saat belum authenticated, bukan error 500).
+
+## 2026-09-17 - Fix: field "Ad ID" gampang salah isi, ganti jadi search picker
+
+- User sempat mengisi kolom "Ad ID" dengan Ad Account ID (`203278761980376`) alih-alih ID iklan individual — Meta API menolak dengan error `(#100) Tried accessing nonexisting field (insights)` karena ID itu bukan objek "ad", jadi tidak punya edge `/insights`. Baris yang salah (id=4) sudah diperbaiki manual ke ad_id yang benar (`120257286529180771`, dicocokkan dari nama kontennya).
+- Supaya tidak berulang: kolom "Ad ID" di form Meta Testing diganti dari input teks bebas jadi **search picker** ([AdIdPicker.tsx](src/components/views/AdIdPicker.tsx)) — ketik nama iklan, muncul daftar hasil pencarian dari akun Meta asli (pakai Graph API `filtering` by `ad.name CONTAIN`), klik untuk pilih. Backend: [src/app/api/meta-ads-search/route.ts](src/app/api/meta-ads-search/route.ts) + `searchAds()` di [src/lib/metaGraphApi.ts](src/lib/metaGraphApi.ts). Sudah dites langsung ke akun (`filtering` by nama "RYANG" berhasil mengembalikan daftar iklan yang cocok).
+- Pola ini sama dengan fix "Scalev Page ID" sebelumnya — dua-duanya sebelumnya rawan salah ketik ID mentah, sekarang dua-duanya jadi cari-dan-pilih.
+
+## 2026-09-17 - Auto-sync Meta Testing dari Meta Graph API + Scalev API
+
+- Meta Testing sekarang bisa tarik data otomatis, bukan cuma input manual. Tambahan kolom di `meta_testing`: `ad_id` (Meta Ad ID), `scalev_page_id` (landing page Scalev), `last_synced_at`. Tambahan kolom `scalev_test_store_id` di `meta_ads_products` (per produk, 1 store Scalev khusus testing). DDL di [scripts/sql/2026-09-17-meta-testing-auto-sync.sql](scripts/sql/2026-09-17-meta-testing-auto-sync.sql). Gamamilk (product id 1) di-set ke store Scalev 76353 ("META - Gamamilk Testing").
+- Tabel baru `scalev_settings` (singleton, sama pola dengan `meta_api_settings`) untuk simpan API key Scalev. UI pengaturan: tombol "Scalev" di halaman Meta Testing ([ScalevSettingsModal.tsx](src/components/views/ScalevSettingsModal.tsx)) + API [src/app/api/scalev-settings/route.ts](src/app/api/scalev-settings/route.ts).
+- Klien API baru [src/lib/scalevApi.ts](src/lib/scalevApi.ts) — `fetchScalevContentStats()` menghitung CLOSING (jumlah order status `completed`) & BOX (`total_quantity`) untuk 1 landing page tertentu. **Penting:** endpoint list order Scalev tidak punya field `page`/`total_quantity`, jadi harus fetch detail satu-satu per order (`GET /v3/orders/{id}`) untuk order yang statusnya `completed`, baru difilter `page.id` di sisi kita. Cocok untuk store testing (volume rendah, sudah dites langsung ke API asli), tapi akan lambat kalau dipakai di store volume tinggi.
+- [src/lib/metaGraphApi.ts](src/lib/metaGraphApi.ts) ditambah `fetchAdInsight()` — ambil insight per Ad ID (bukan per campaign seperti fungsi lama). Definisi metrik (disepakati & diverifikasi ke akun asli, bukan tebakan):
+  - **Lead** = actions dengan action_type `onsite_conversion.messaging_conversation_started_*` atau `onsite_conversion.messaging_first_reply` (metrik standar Click-to-WhatsApp Meta).
+  - **Hook Rate** = video_play_actions / impressions. **Hold Rate** = video_thruplay_watched_actions / video_play_actions. (Field `video_continuous_2_sec_watched_actions` yang lebih presisi untuk "3-second plays" ternyata tidak dikembalikan API versi akun ini, jadi dipakai `video_play_actions` sebagai proxy — kalau nanti mau diganti definisi lain, tinggal ubah `fetchAdInsight()`.)
+  - CPR = spending/lead, CR = closing/lead, CPA = spending/closing — dihitung otomatis. **CPA% dan semua kolom Skor/Bonus/Rank/Grade tetap manual** (belum ada rumus/skala yang disepakati).
+- API baru `POST /api/meta-testing/[id]/sync` ([route.ts](src/app/api/meta-testing/[id]/sync/route.ts)) — ambil ad_id + scalev_page_id dari baris, ambil token Meta & API key Scalev dari tabel settings, tarik kedua API paralel, lalu UPDATE baris. Tombol "Sync" per baris ditambahkan di [MetaTestingTable.tsx](src/components/views/MetaTestingTable.tsx) (nonaktif kalau Ad ID/Scalev Page ID belum diisi), plus kolom "Terakhir Sync".
+- **Ditemukan & diperbaiki saat testing:** token Meta API yang tersimpan di `meta_api_settings` sudah expired (kadaluarsa kemarin) — diganti dengan token baru yang diberikan user. Kalau expired lagi nanti, perlu diperbarui manual lewat menu /meta/live (sistem belum ada refresh token otomatis).
+- Diuji end-to-end pakai script sekali-pakai (langsung ke Meta Graph API & Scalev API asli, bukan mock): insight iklan asli (spend Rp67.170, CTR 2.36%, hook rate 85.3%) dan closing/box asli dari Scalev (25 closing, 68 box) berhasil ditarik dan tersimpan ke `meta_testing`, lalu baris test dihapus lagi.
+- **Catatan keamanan:** API key Scalev dan token Meta yang diberikan user di chat ini disimpan ke database (tidak pernah ditulis ke source code), tidak pernah dicetak ulang di respons. Disarankan user rotate/ganti kedua kredensial tersebut karena sempat diketik plaintext di chat.
+
+## 2026-09-17 - Menu "Meta Testing" di Branding + tabel database baru
+
+- Tambah item sidebar "Meta Testing" di [src/components/BrandingSidebar.tsx](src/components/BrandingSidebar.tsx) (route `/branding/meta-testing`), sesuai permintaan user untuk taruh di sidebar "Menu Utama" Branding, bukan di bawah Advertiser.
+- Tabel baru `meta_testing` di `erp_sahada` (Advertiser DB) — mengikuti struktur kolom yang diberikan user (funnel, kategori, link konten, nama konten, tanggal running, status iklan, spending, lead, CPR, hook rate, hold rate, CTR, CPM, closing, box, CR, CPA, CPA%, layak dianalisa, seluruh kolom skor/bonus, skor total, rank/`peringkat`, grade), plus `id_karyawan` + `nama_karyawan` (diambil otomatis dari sesi login, sama seperti pola `dibuat_oleh` di `meta_ads_daily`). FK `product_id` ke `meta_ads_products` (produk dipilih dari daftar yang sudah ada, bukan teks bebas). DDL disimpan di [scripts/sql/2026-09-17-create-meta-testing.sql](scripts/sql/2026-09-17-create-meta-testing.sql) untuk dokumentasi (dijalankan manual, repo ini belum punya sistem migrasi).
+- Semua kolom skor/rank/grade **diisi manual** (bukan dihitung otomatis dari rumus) — sesuai keputusan user, karena rumus/skala penilaiannya belum ditentukan. Bisa diotomatisasi belakangan kalau rumusnya sudah fix.
+- API baru: `GET/POST /api/meta-testing`, `PUT/DELETE /api/meta-testing/[id]` ([src/app/api/meta-testing/](src/app/api/meta-testing/)), model & mapping di [src/lib/metaTesting.ts](src/lib/metaTesting.ts). Kolom `tanggal_running` (DATE) pakai helper `toDateStr()` yang sama dengan `meta_ads_daily.tanggal` untuk menghindari bug mundur satu hari akibat timezone (lihat pola di `src/lib/metaAds.ts`).
+- Diuji: INSERT + SELECT (JOIN ke `meta_ads_products`) + DELETE lewat script sekali-pakai langsung ke `erp_sahada` — kolom dan mapping cocok. Halaman `/branding/meta-testing` dan seluruh route `/branding/*` dipastikan bisa di-render (bukan 500) dengan bypass sementara di `proxy.ts` yang langsung dikembalikan setelah tes.
+
+## 2026-09-16 - Login pakai kolom nama_user, tambah password ke karyawan_cache
+
+- Lookup login diubah dari `WHERE id_karyawan = ?` jadi `WHERE nama_user = ?` — field "Username" di form login sekarang benar-benar mencocokkan kolom `karyawan.nama_user` (contoh: `muhammad.huda`), bukan NIP.
+- Tabel `karyawan_cache` di `erp_sahada` ditambah kolom `password` (varchar(255), setelah `nama_user`). Diisi lewat `cacheKaryawan()` di [src/lib/dbAdvertiser.ts](src/lib/dbAdvertiser.ts), disalin apa adanya dari Main DB (masih plaintext, mengikuti format sumber).
+- **Alasan:** persiapan supaya login ERP ini nantinya bisa mandiri (verifikasi ke `erp_sahada` saja, lepas dari Main DB HRIS). User memilih salin apa adanya (bukan di-hash ulang) untuk saat ini demi kesederhanaan — risiko plaintext yang sudah ada di Main DB jadi ikut tersalin ke database kedua, ini trade-off yang disadari & disetujui.
+- Diuji: login dengan `nama_user` yang benar + password salah ditolak dengan pesan "Password salah" (lookup by username sudah jalan).
+
+## 2026-09-16 - Sederhanakan form login jadi NIP + Password saja
+
+- Field "Nama Lengkap" dihapus dari form login ([src/app/login/page.tsx](src/app/login/page.tsx)) dan dari validasi backend ([src/app/api/auth/login/route.ts](src/app/api/auth/login/route.ts)) — sebelumnya harus isi Nama + NIP + Password, sekarang cukup NIP (jadi "Username") + Password.
+- Diuji: request tanpa field ditolak ("NIP dan password wajib diisi"), NIP+password salah ditolak dengan benar tanpa perlu kirim nama.
+
+## 2026-09-16 - Tambah verifikasi password di login manual
+
+- Login manual ([src/app/api/auth/login/route.ts](src/app/api/auth/login/route.ts)) sebelumnya cuma mencocokkan Nama + NIP tanpa password sama sekali — siapa pun yang tahu nama & NIP karyawan bisa login sebagai orang itu.
+- Sekarang wajib isi password, dicocokkan ke kolom `karyawan.password` di Main DB (kolom ini sudah ada tapi sebelumnya tidak dipakai).
+- **Catatan keamanan:** kolom `password` di tabel `karyawan` ternyata tersimpan **plaintext** (panjang 10 karakter, bukan format bcrypt `$2y$...`), bukan hash. Perbandingan dilakukan sebagai string biasa karena memang begitu formatnya di database — bukan keputusan desain ERP ini. Password tidak pernah ditulis ke `karyawan_cache` maupun ke session/JWT.
+- Form login ([src/app/login/page.tsx](src/app/login/page.tsx)) ditambah field password.
+- Diuji: login tanpa password ditolak ("wajib diisi"), login dengan password salah ditolak ("Password salah").
+- **Belum dibereskan:** penyimpanan password plaintext di Main DB adalah risiko keamanan yang sebaiknya diperbaiki di aplikasi Great (HRIS) itu sendiri (hash dengan bcrypt), di luar cakupan ERP ini karena Main DB bukan milik project ini.
+
+## 2026-09-16 - Tabel cache karyawan (`karyawan_cache`) di erp_sahada
+
+- Menambahkan tabel `karyawan_cache` di `erp_sahada` (PK `id_karyawan`, index `organisasi` & `nama`) — menyimpan salinan data karyawan (nama, nama_user, jabatan, organisasi/divisi, posisi, email, foto, status_karyawan).
+- Login manual ([src/app/api/auth/login/route.ts](src/app/api/auth/login/route.ts)) dan login via SSO dari Great ([src/app/sso/route.ts](src/app/sso/route.ts)) sekarang meng-upsert data karyawan ke `karyawan_cache` setiap kali berhasil login. Verifikasi identitas & status aktif tetap ke Main DB (`karyawan` di database "Great") — cache ini hanya salinan, bukan sumber kebenaran.
+- Ditambahkan helper `cacheKaryawan()` di [src/lib/dbAdvertiser.ts](src/lib/dbAdvertiser.ts). Kegagalan sync cache tidak menggagalkan proses login (di-catch & di-log saja).
+- Tujuan: jadi fondasi untuk fitur filter karyawan (NIP/Nama/Devisi) di modul Meta Ads yang sudah direncanakan, tanpa perlu query silang terus-menerus ke Main DB.
+- Sudah diuji: login manual via API berhasil dan baris tersimpan dengan benar di `karyawan_cache`.
+
+## 2026-09-16 - Konfirmasi arah: `erp_sahada` jadi database pusat ERP
+
+- User mengonfirmasi bahwa `erp_sahada` (saat ini dipakai lewat `advertiserDb`/`queryAdvertiser()` di `src/lib/dbAdvertiser.ts`) akan menjadi **database pusat** untuk seluruh aplikasi ERP ini ke depannya, bukan cuma untuk modul Meta Ads.
+- Main DB (`db`/`query()` di `src/lib/db.ts`, database "Great" bersama sistem HRIS) ke depannya diperlakukan sebagai sumber data eksternal/legacy — dipakai hanya kalau memang butuh data HRIS (karyawan, presensi, dll), bukan tempat menaruh tabel baru milik ERP ini.
+- Struktur `erp_sahada` saat ini masih minim, cuma 4 tabel (semuanya untuk Meta Ads): `meta_ads_products`, `meta_ads_daily` (FK ke `meta_ads_products`, unique per product+tanggal), `meta_api_campaign_snapshots`, `meta_api_settings`. Artinya ini masih blank slate untuk tabel-tabel modul ERP lain yang akan dibangun.
+- Belum diputuskan: rencana beres-beres duplikasi 4 tabel Meta Ads yang juga masih ada di Main DB (lihat entri di bawah).
+
+## 2026-09-16 - Observasi awal database
+
+- Melakukan observasi struktur dua database yang dipakai project:
+  - **Main DB** (`db.ts`, host `DB_HOST`, schema `default` di server 72.61.141.107) — database HRIS "Great" yang dipakai bersama, berisi tabel karyawan, presensi, lembur, pengajuan izin, aset kantor, dll (37 tabel).
+  - **Advertiser DB** (`dbAdvertiser.ts`, `erp_sahada` di 127.0.0.1) — khusus modul Meta Ads, berisi 4 tabel: `meta_ads_daily`, `meta_ads_products`, `meta_api_campaign_snapshots`, `meta_api_settings`.
+- Catatan: keempat tabel Meta Ads di atas ternyata **ada duplikatnya di Main DB** juga (nama tabel sama persis). Perlu dikonfirmasi apakah ini disengaja (migrasi yang belum selesai) atau salah satu sisi sudah tidak dipakai lagi, supaya tidak terjadi data yang out-of-sync antara dua database.

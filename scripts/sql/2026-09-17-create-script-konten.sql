@@ -1,0 +1,33 @@
+-- Tabel baru untuk fitur "Script dan Konten" (Branding > Script dan Konten).
+-- Dijalankan manual terhadap erp_sahada, disimpan sebagai catatan histori skema.
+CREATE TABLE IF NOT EXISTS script_konten (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  tanggal_order DATE NULL,
+  judul VARCHAR(255) NOT NULL DEFAULT '',
+  product_id INT NOT NULL,
+  cep VARCHAR(100) NOT NULL DEFAULT '',
+  funnel VARCHAR(50) NOT NULL DEFAULT '',
+  kategori VARCHAR(100) NOT NULL DEFAULT '',
+  stage_awareness VARCHAR(50) NOT NULL DEFAULT '',
+  angle VARCHAR(150) NOT NULL DEFAULT '',
+  type_hook VARCHAR(150) NOT NULL DEFAULT '',
+  format VARCHAR(50) NOT NULL DEFAULT '',
+  eksekusi TEXT NULL,
+  script TEXT NULL,
+  creator VARCHAR(100) NOT NULL DEFAULT '',
+  link_konten VARCHAR(500) NOT NULL DEFAULT '',
+  status VARCHAR(50) NOT NULL DEFAULT 'Draft',
+  tanggal_acc_konten DATE NULL,
+  nama_konten VARCHAR(255) NULL,
+  matriks_perolehan TEXT NULL,
+  analisis_evaluasi TEXT NULL,
+  iterasi TEXT NULL,
+  id_karyawan VARCHAR(50) NOT NULL DEFAULT '',
+  nama_karyawan VARCHAR(150) NOT NULL DEFAULT '',
+  diubah_oleh VARCHAR(150) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_script_konten_product FOREIGN KEY (product_id) REFERENCES meta_ads_products(id) ON DELETE CASCADE,
+  INDEX idx_script_konten_product (product_id),
+  INDEX idx_script_konten_status (status)
+);

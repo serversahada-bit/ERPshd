@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Aplikasi ini hanya memakai tema light — varian dark: hanya aktif lewat class
+   .dark (tidak pernah dipasang), jadi tidak lagi ikut prefers-color-scheme sistem. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}

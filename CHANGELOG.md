@@ -10,6 +10,11 @@ Catatan perubahan dan improvement pada project ERP ini. Setiap ada perubahan ber
 
 ---
 
+## 2026-09-18 - Push pertama ke GitHub (repo public) + hardening secret
+
+- Project di-push pertama kali ke GitHub: https://github.com/serversahada-bit/ERPshd (branch `main`). `.env.local` dan file sensitif lain tetap di-exclude via `.gitignore`.
+- Karena repo-nya public, fallback hardcoded untuk `JWT_SECRET` dan `SSO_SECRET` di [src/lib/auth.ts](src/lib/auth.ts) dihapus — sekarang wajib di-set lewat env var, kalau tidak ada app akan throw error saat start. **Penting:** server produksi harus punya kedua env var ini ter-set dengan nilai yang sama seperti sebelumnya (match dengan `SSO_SECRET` di aplikasi Great HRIS) sebelum deploy ulang, supaya SSO tidak putus.
+
 ## 2026-09-17 - Nama Konten auto-generate + kolom PIC disembunyikan (Script dan Konten)
 
 - Field "Nama Konten" di form Script dan Konten sekarang **otomatis ter-generate** (read-only, bukan input manual) dari Format, Funnel, Kategori, Stage Awareness, Angle, Creator, dan Tanggal Order — meniru rumus formula di spreadsheet asli user (yang punya catatan "Copy untuk nama konten & Iklan", artinya hasil itu juga dipakai sebagai nama iklan di Meta Ads Manager). Implementasi: `generateNamaKonten()` di [src/lib/scriptKonten.ts](src/lib/scriptKonten.ts), dipakai live di [ScriptKontenFormModal.tsx](src/components/views/ScriptKontenFormModal.tsx). Kosong sampai semua 7 field sumber terisi.

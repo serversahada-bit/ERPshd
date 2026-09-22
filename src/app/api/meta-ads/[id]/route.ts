@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { queryAdvertiser as query } from '@/lib/dbAdvertiser';
 import { getSession } from '@/lib/auth';
-import { RAW_FIELDS } from '@/lib/metaAds';
+import { RAW_FIELDS, AUTO_FROM_CLOSING_BOX_CS_KEYS } from '@/lib/metaAds';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -26,8 +26,12 @@ export async function PUT(request: Request, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: 'Tanggal wajib diisi.' }, { status: 400 });
     }
 
-    const columns = RAW_FIELDS.map((f) => f.dbColumn);
-    const values = RAW_FIELDS.map((f) => (f.key === 'tanggal' ? body.tanggal : f.key === 'grade' ? (body[f.key] || 'B') : Number(body[f.key]) || 0));
+    // Lead Real/New Customer Real/Follow Up tidak lagi diedit lewat form ini (dihitung otomatis
+    // dari Closing Box CS) — dikecualikan dari UPDATE supaya nilai fallback lama tidak ketiban 0
+    // tiap kali baris ini diedit untuk field lain.
+    const editableFields = RAW_FIELDS.filter((f) => !AUTO_FROM_CLOSING_BOX_CS_KEYS.includes(f.key));
+    const columns = editableFields.map((f) => f.dbColumn);
+    const values = editableFields.map((f) => (f.key === 'tanggal' ? body.tanggal : f.key === 'grade' ? (body[f.key] || 'B') : Number(body[f.key]) || 0));
 
     const setClause = columns.map((c) => `${c} = ?`).join(', ');
 

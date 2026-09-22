@@ -83,6 +83,40 @@ export const RAW_FIELD_SECTIONS: RawFieldSection[] = [
 
 export const RAW_FIELDS: RawFieldDef[] = RAW_FIELD_SECTIONS.flatMap((s) => s.fields);
 
+// Field yang masih diinput manual oleh user di form Tambah/Edit Data Harian.
+// Field raw lain tetap tampil di form (untuk visibilitas & kompatibilitas data lama)
+// tapi dikunci (read-only) karena dihitung otomatis (lihat AUTO_COMPUTED_KEYS &
+// AUTO_FROM_CLOSING_BOX_CS_KEYS).
+export const MANUAL_INPUT_KEYS: string[] = [
+  'tanggal',
+  'spendIklan',
+  'jangkauan',
+  'impresi',
+  'klikTautan',
+  'tayanganKonten',
+  'addToChart',
+  'icForm',
+  'formScalev',
+  'targetLead',
+  'targetBoxTp',
+  'batasAkuisisiBox',
+  'grade',
+  'arus',
+];
+
+// Field "Lead Real (Konfirmasi CS)", "New Customer Real Hari Ini", dan "Follow Up" tidak lagi
+// diinput manual maupun ditampilkan di form Tambah/Edit — nilainya dihitung otomatis dari
+// total Closing Box CS pada tanggal yang sama (lihat applyClosingBoxCsRealLeads). Kolom di
+// database tetap dipertahankan sebagai fallback untuk data lama yang belum punya Closing Box CS.
+export const AUTO_FROM_CLOSING_BOX_CS_KEYS: string[] = [
+  'formReal',
+  'waReal',
+  'closingCustomerNc',
+  'boxNc',
+  'closingCustomerFu',
+  'boxFu',
+];
+
 export interface MetaAdsRawRecord {
   id?: number;
   dibuatOleh: string;
@@ -158,8 +192,66 @@ export function mapDbRowToRecord(row: any): MetaAdsRawRecord & { id: number } {
   };
 }
 
+export interface ClosingBoxCsRealLeadSums {
+  leadForm: number;
+  leadWa: number;
+  ncClosing: number;
+  ncBox: number;
+  fuClosing: number;
+  fuBox: number;
+}
+
+// Timpa Lead Real/New Customer Real/Follow Up dengan total Closing Box CS pada tanggal yang
+// sama (semua platform & ADV digabung). Kalau Closing Box CS belum punya baris sama sekali
+// untuk tanggal itu, nilai manual lama yang tersimpan di meta_ads_daily tetap dipakai (fallback).
+export function applyClosingBoxCsRealLeads<T extends MetaAdsRawRecord>(
+  record: T,
+  sumsByTanggal: Map<string, ClosingBoxCsRealLeadSums>
+): T {
+  const sums = sumsByTanggal.get(record.tanggal);
+  if (!sums) return record;
+  return {
+    ...record,
+    formReal: sums.leadForm,
+    waReal: sums.leadWa,
+    closingCustomerNc: sums.ncClosing,
+    boxNc: sums.ncBox,
+    closingCustomerFu: sums.fuClosing,
+    boxFu: sums.fuBox,
+  };
+}
+
 function safeDiv(a: number, b: number): number {
   return b ? a / b : 0;
+}
+
+// Field raw yang sudah punya rumus otomatis (lihat MANUAL_INPUT_KEYS) — dihitung dari
+// field manual lain, bukan lagi diinput langsung. Hasilnya tetap disimpan di kolom raw
+// yang sama seperti sebelumnya (target_spend, rasio_vc70, dst), cuma sumber nilainya berubah.
+export const AUTO_COMPUTED_KEYS: string[] = ['targetSpend', 'rasioVC70', 'rasioATC15', 'rasioIC30', 'rasioKonversi'];
+
+export interface AutoRawFieldInputs {
+  spendIklan: number;
+  tayanganKonten: number;
+  klikTautan: number;
+  addToChart: number;
+  icForm: number;
+  formScalev: number;
+  waIklan: number;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+export function computeAutoRawFields(input: AutoRawFieldInputs) {
+  return {
+    targetSpend: round2(input.spendIklan * 1.11),
+    rasioVC70: round2(safeDiv(input.tayanganKonten, input.klikTautan) * 100),
+    rasioATC15: round2(safeDiv(input.addToChart, input.tayanganKonten) * 100),
+    rasioIC30: round2(safeDiv(input.icForm, input.addToChart) * 100),
+    rasioKonversi: round2(safeDiv(input.formScalev + input.waIklan, input.tayanganKonten) * 100),
+  };
 }
 
 /**
@@ -171,7 +263,7 @@ export function computeDerived(raw: MetaAdsRawRecord) {
   const spendPpn = raw.spendIklan * 1.11;
 
   const frekuensi = safeDiv(raw.impresi, raw.jangkauan);
-  const hargaPerJangkauan = safeDiv(raw.spendIklan, raw.jangkauan);
+  const hargaPerJangkauan = safeDiv(raw.spendIklan, raw.jangkauan) * 1000;
   const cpm = safeDiv(raw.spendIklan, raw.impresi) * 1000;
   const ctr = safeDiv(raw.klikTautan, raw.impresi) * 100;
   const cpcTotal = safeDiv(raw.spendIklan, raw.klikTautan);
@@ -196,7 +288,7 @@ export function computeDerived(raw: MetaAdsRawRecord) {
   const upSellingTp = safeDiv(boxTotalTp, closingTotalTp);
   const biayaAkuisisiCustomer = safeDiv(spendPpn, closingTotalTp);
   const biayaAkuisisiBoxPcs = safeDiv(spendPpn, boxTotalTp);
-  const persenAkuisisiBox = safeDiv(boxTotalTp, raw.targetBoxTp) * 100;
+  const persenAkuisisiBox = (safeDiv(raw.targetSpend, boxTotalTp) / 80000) * 100;
 
   return {
     spendPpn,

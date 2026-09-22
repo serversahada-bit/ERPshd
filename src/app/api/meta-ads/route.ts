@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { queryAdvertiser as query } from '@/lib/dbAdvertiser';
 import { getSession } from '@/lib/auth';
-import { RAW_FIELDS, mapDbRowToRecord, withDerived } from '@/lib/metaAds';
+import { RAW_FIELDS, mapDbRowToRecord, withDerived, applyClosingBoxCsRealLeads, type ClosingBoxCsRealLeadSums } from '@/lib/metaAds';
 
 export async function GET(request: Request) {
   const user = await getSession();
@@ -16,8 +16,32 @@ export async function GET(request: Request) {
   }
 
   try {
-    const rows = (await query('SELECT * FROM meta_ads_daily WHERE product_id = ? ORDER BY tanggal DESC', [productId])) as any[];
-    const data = rows.map((row) => withDerived(mapDbRowToRecord(row)));
+    const [rows, csSums] = await Promise.all([
+      query('SELECT * FROM meta_ads_daily WHERE product_id = ? ORDER BY tanggal DESC', [productId]) as Promise<any[]>,
+      query(
+        `SELECT DATE_FORMAT(tanggal, '%Y-%m-%d') AS tanggal,
+           SUM(lead_form) AS leadForm, SUM(lead_wa) AS leadWa,
+           SUM(nc_closing) AS ncClosing, SUM(nc_box) AS ncBox,
+           SUM(fu_closing) AS fuClosing, SUM(fu_box) AS fuBox
+         FROM closing_box_cs WHERE product_id = ? GROUP BY tanggal`,
+        [productId]
+      ) as Promise<any[]>,
+    ]);
+
+    // Total Closing Box CS per tanggal (semua platform/ADV digabung) dipakai buat menimpa
+    // Lead Real/New Customer Real/Follow Up — lihat applyClosingBoxCsRealLeads di lib/metaAds.
+    const sumsByTanggal = new Map<string, ClosingBoxCsRealLeadSums>(
+      csSums.map((row) => [
+        row.tanggal,
+        {
+          leadForm: Number(row.leadForm), leadWa: Number(row.leadWa),
+          ncClosing: Number(row.ncClosing), ncBox: Number(row.ncBox),
+          fuClosing: Number(row.fuClosing), fuBox: Number(row.fuBox),
+        },
+      ])
+    );
+
+    const data = rows.map((row) => withDerived(applyClosingBoxCsRealLeads(mapDbRowToRecord(row), sumsByTanggal)));
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     console.error('Meta Ads GET Error:', error);

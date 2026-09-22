@@ -10,6 +10,14 @@ Catatan perubahan dan improvement pada project ERP ini. Setiap ada perubahan ber
 
 ---
 
+## 2026-09-22 - Fitur baru "Closing Box CS" + auto-compute field Meta Ads
+
+- Modul baru **Closing Box CS** (`/meta/closing-box-cs`): pencatatan harian Lead CS (FORM/WA), New Customer (Closing/Box), dan Follow Up (Closing/Box) per Platform & ADV, dengan metrik otomatis Closing Rate, Up Selling, Closing Rate All, Up Selling All. Butuh tabel baru `closing_box_cs` di database Advertiser — jalankan [scripts/sql/2026-09-22-create-closing-box-cs.sql](scripts/sql/2026-09-22-create-closing-box-cs.sql) dulu sebelum deploy.
+- Field "Lead Real (Konfirmasi CS)", "New Customer Real Hari Ini", dan "Follow Up" di form Data Harian Meta Ads **tidak lagi input manual** — dihitung otomatis dari total Closing Box CS pada tanggal yang sama (fallback ke nilai lama kalau belum ada data Closing Box CS untuk tanggal itu). Lihat `applyClosingBoxCsRealLeads` di [src/lib/metaAds.ts](src/lib/metaAds.ts).
+- Field "Perencanaan Target Spend" dan Rasio VC/ATC/IC/Konversi juga jadi **otomatis dihitung** dari field manual lain (`computeAutoRawFields`), bukan input manual lagi.
+- Perbaikan rumus: `hargaPerJangkauan` sekarang dikali 1000, dan `persenAkuisisiBox` diganti jadi `(Target Spend ÷ Box Total) ÷ 80.000 × 100%`.
+- Digabungkan dari kerjaan paralel developer lain (diterima via Google Drive export) — sudah di-merge selektif, mempertahankan fix keamanan & fitur lokal (Suspense boundary, `scalevTestStoreId`, Meta Testing, Branding, Script Konten, Produk Master) yang tidak ada di versi drive tersebut.
+
 ## 2026-09-18 - Push pertama ke GitHub (repo public) + hardening secret
 
 - Project di-push pertama kali ke GitHub: https://github.com/serversahada-bit/ERPshd (branch `main`). `.env.local` dan file sensitif lain tetap di-exclude via `.gitignore`.

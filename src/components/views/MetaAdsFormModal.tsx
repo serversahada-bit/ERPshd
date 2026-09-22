@@ -1,8 +1,16 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { RAW_FIELD_SECTIONS, RAW_FIELDS, MetaAdsRawRecord } from '@/lib/metaAds';
+import { RAW_FIELD_SECTIONS, RAW_FIELDS, MANUAL_INPUT_KEYS, AUTO_FROM_CLOSING_BOX_CS_KEYS, computeAutoRawFields, MetaAdsRawRecord } from '@/lib/metaAds';
+
+// Section-section RAW_FIELD_SECTIONS setelah field yang sudah dihitung otomatis dari
+// Closing Box CS (Lead Real, New Customer Real Hari Ini, Follow Up) disaring keluar —
+// field-field itu tidak lagi ditampilkan atau diinput di form Tambah/Edit.
+const VISIBLE_FIELD_SECTIONS = RAW_FIELD_SECTIONS.map((section) => ({
+  ...section,
+  fields: section.fields.filter((field) => !AUTO_FROM_CLOSING_BOX_CS_KEYS.includes(field.key)),
+})).filter((section) => section.fields.length > 0);
 
 const GRADE_OPTIONS = ['A+', 'A', 'B+', 'B', 'C'];
 
@@ -39,6 +47,35 @@ export default function MetaAdsFormModal({ mode, productId, initialData, onClose
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  // Field terkunci yang sudah punya rumus (Perencanaan Target Spend, Rasio VC/ATC/IC/Konversi)
+  // dihitung ulang otomatis tiap kali field manual yang jadi sumbernya berubah — hanya untuk
+  // data baru. Data lama (mode edit) dibiarkan menampilkan nilai yang sudah tersimpan,
+  // tidak ditimpa oleh rumus supaya angka historis tidak berubah sendiri.
+  useEffect(() => {
+    if (mode !== 'create') return;
+    const auto = computeAutoRawFields({
+      spendIklan: Number(form.spendIklan) || 0,
+      tayanganKonten: Number(form.tayanganKonten) || 0,
+      klikTautan: Number(form.klikTautan) || 0,
+      addToChart: Number(form.addToChart) || 0,
+      icForm: Number(form.icForm) || 0,
+      formScalev: Number(form.formScalev) || 0,
+      waIklan: Number(form.waIklan) || 0,
+    });
+    setForm((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      (Object.keys(auto) as (keyof typeof auto)[]).forEach((key) => {
+        const value = String(auto[key]);
+        if (next[key] !== value) {
+          next[key] = value;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [form.spendIklan, form.tayanganKonten, form.klikTautan, form.addToChart, form.icForm, form.formScalev, form.waIklan]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -46,6 +83,7 @@ export default function MetaAdsFormModal({ mode, productId, initialData, onClose
 
     const payload: Record<string, string | number> = mode === 'create' ? { productId: Number(productId) } : {};
     RAW_FIELDS.forEach((f) => {
+      if (AUTO_FROM_CLOSING_BOX_CS_KEYS.includes(f.key)) return;
       if (f.key === 'tanggal' || f.key === 'grade') {
         payload[f.key] = form[f.key];
       } else {
@@ -100,46 +138,61 @@ export default function MetaAdsFormModal({ mode, productId, initialData, onClose
             </div>
           )}
 
-          {RAW_FIELD_SECTIONS.map((section) => (
+          {VISIBLE_FIELD_SECTIONS.map((section) => (
             <div key={section.title}>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">
                 {section.title}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {section.fields.map((field) => (
-                  <div key={field.key}>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">{field.label}</label>
-                    {field.format === 'date' ? (
-                      <input
-                        type="date"
-                        required
-                        value={form[field.key]}
-                        onChange={(e) => handleChange(field.key, e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
-                      />
-                    ) : field.format === 'grade' ? (
-                      <select
-                        value={form[field.key]}
-                        onChange={(e) => handleChange(field.key, e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
-                      >
-                        {GRADE_OPTIONS.map((g) => (
-                          <option key={g} value={g}>
-                            {g}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="number"
-                        step={field.format === 'percent' ? '0.1' : 'any'}
-                        value={form[field.key]}
-                        onChange={(e) => handleChange(field.key, e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
-                      />
-                    )}
-                  </div>
-                ))}
+                {section.fields.map((field) => {
+                  const isManual = MANUAL_INPUT_KEYS.includes(field.key);
+                  const lockedClass = 'bg-slate-50 text-slate-400 cursor-not-allowed';
+                  return (
+                    <div key={field.key}>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        {field.label}
+                        {!isManual && (
+                          <span className="ml-1 font-normal normal-case text-slate-400">(Otomatis)</span>
+                        )}
+                      </label>
+                      {field.format === 'date' ? (
+                        <input
+                          type="date"
+                          required
+                          value={form[field.key]}
+                          onChange={(e) => handleChange(field.key, e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+                        />
+                      ) : field.format === 'grade' ? (
+                        <select
+                          value={form[field.key]}
+                          onChange={(e) => handleChange(field.key, e.target.value)}
+                          disabled={!isManual}
+                          className={`w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 ${
+                            isManual ? '' : lockedClass
+                          }`}
+                        >
+                          {GRADE_OPTIONS.map((g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="number"
+                          step={field.format === 'percent' ? '0.1' : 'any'}
+                          value={form[field.key]}
+                          onChange={(e) => handleChange(field.key, e.target.value)}
+                          disabled={!isManual}
+                          className={`w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 ${
+                            isManual ? '' : lockedClass
+                          }`}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}

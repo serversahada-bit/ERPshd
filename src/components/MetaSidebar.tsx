@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { LayoutDashboard, Table2, Search, ShoppingBag, ArrowLeft, Sliders, Megaphone, PlugZap } from 'lucide-react';
+import { LayoutDashboard, Table2, Search, ShoppingBag, ArrowLeft, Sliders, Megaphone, PlugZap, PackageCheck } from 'lucide-react';
 
 const MAIN_MENU = [
   { id: 'dashboard', href: '/meta', label: 'Dashboard Report', icon: LayoutDashboard, disabled: false },
   { id: 'live', href: '/meta/live', label: 'Dashboard Meta', icon: PlugZap, disabled: false },
   { id: 'data', href: '/meta/data', label: 'Data', icon: Table2, disabled: false },
+  { id: 'closing-box-cs', href: '/meta/closing-box-cs', label: 'Closing Box CS', icon: PackageCheck, disabled: false },
   { id: 'google-tiktok-ads', href: '#', label: 'Google & TikTok Ads', icon: Search, disabled: true },
   { id: 'marketplace-ads', href: '#', label: 'Marketplace (Shopee/Tokped)', icon: ShoppingBag, disabled: true },
 ];

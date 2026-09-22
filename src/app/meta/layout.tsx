@@ -10,6 +10,7 @@ import ProductSelector from '@/components/ProductSelector';
 const PAGE_TITLES: Record<string, string> = {
   '/meta': 'Dashboard Report',
   '/meta/data': 'Meta Ads (FB & IG)',
+  '/meta/closing-box-cs': 'Closing Box CS',
   '/meta/live': 'Dashboard Meta',
 };
 

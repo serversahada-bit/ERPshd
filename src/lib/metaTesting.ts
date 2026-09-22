@@ -47,7 +47,7 @@ export const RAW_FIELD_SECTIONS: MetaTestingFieldSection[] = [
       { key: 'cr', dbColumn: 'cr', label: 'CR', type: 'number', suffix: '%' },
       { key: 'cpa', dbColumn: 'cpa', label: 'CPA', type: 'number' },
       { key: 'cpaPersen', dbColumn: 'cpa_persen', label: 'CPA%', type: 'number', suffix: '%' },
-      { key: 'layakDianalisa', dbColumn: 'layak_dianalisa', label: 'Layak Dianalisa?', type: 'select', options: ['Ya', 'Belum', 'Tidak'] },
+      { key: 'layakDianalisa', dbColumn: 'layak_dianalisa', label: 'Layak Dianalisa?', type: 'text' },
     ],
   },
   {
@@ -72,6 +72,80 @@ export const RAW_FIELD_SECTIONS: MetaTestingFieldSection[] = [
 ];
 
 export const RAW_FIELDS: MetaTestingField[] = RAW_FIELD_SECTIONS.flatMap((s) => s.fields);
+
+// Field yang masih diinput manual oleh user di form Tambah/Edit Meta Testing.
+// Field lain (CPR, CR, CPA, CPA%, Layak Dianalisa, semua Skor, Rank, Grade) dihitung
+// otomatis lewat computeMetaTestingBatch — lihat AUTO_COMPUTED_KEYS.
+export const MANUAL_INPUT_KEYS: string[] = [
+  'funnel',
+  'kategori',
+  'linkKonten',
+  'adId',
+  'scalevPageId',
+  'namaKonten',
+  'tanggalRunning',
+  'statusIklan',
+  'spending',
+  'totalLead',
+  'hookRate',
+  'holdRate',
+  'ctr',
+  'cpm',
+  'closing',
+  'box',
+];
+
+// Field yang tidak lagi diinput manual — dihitung otomatis dari field manual di atas,
+// mengikuti rumus & parameter skoring di spreadsheet sumber "EVALADS META V2" (sheet
+// META TESTING + Parameter). Lihat computeMetaTestingBatch di bawah.
+export const AUTO_COMPUTED_KEYS: string[] = [
+  'cpr',
+  'cr',
+  'cpa',
+  'cpaPersen',
+  'layakDianalisa',
+  'skorCpr',
+  'skorCpm',
+  'skorCtr',
+  'skorHook',
+  'skorHold',
+  'bonusBudget',
+  'skorKonten',
+  'skorCr',
+  'skorCpaPersen',
+  'bonusVolume',
+  'skorKonvert',
+  'skorTotal',
+  'peringkat',
+  'grade',
+];
+
+// Parameter skoring — disamakan persis dengan sheet "Parameter" di EVALADS META V2.
+// Ubah di sini kalau target/bobot berubah, tidak perlu ubah rumus di computeMetaTestingBatch.
+export const SCORING_PARAMS = {
+  targetCpr: 146880, // Target CPR (Rp)
+  targetCpm: 80000, // Target CPM (Rp) — juga dipakai sebagai pembagi tetap untuk CPA% (sesuai rumus asli)
+  targetCtr: 2, // Target CTR (%)
+  targetHookRate: 30, // Target Hook Rate (%)
+  targetHoldRate: 35, // Target Hold Rate (%)
+  targetCrPercent: 65, // Target CR (%) — sheet asli simpan sebagai 0.65 (fraksi), di sini pakai skala % (65)
+  breakEvenCpaPercent: 100, // Target CPA% breakeven — sheet asli 1.0 (fraksi) = 100%
+  capCpaPercent: 125, // Batas maksimal CPA% (cap gagal) — sheet asli 1.25 = 125%
+  minSpendingThreshold: 150000, // Ambang minimum Spending supaya "Layak Dianalisa"
+  minLeadThreshold: 1, // Ambang minimum Lead supaya "Layak Dianalisa"
+  bobotCpr: 30,
+  bobotCpm: 25,
+  bobotCtr: 20,
+  bobotHookRate: 10,
+  bobotHoldRate: 5,
+  bobotBonusBudget: 10,
+  bobotCr: 45,
+  bobotCpaPersen: 45,
+  bobotBonusVolume: 10,
+  gradeAThreshold: 140, // Skor Total >= ini => Grade A
+  gradeBThreshold: 100, // Skor Total >= ini => Grade B
+  gradeCThreshold: 60, // Skor Total >= ini => Grade C, di bawah ini => Grade D
+} as const;
 
 const TEXT_KEYS = new Set(['funnel', 'kategori', 'linkKonten', 'namaKonten', 'tanggalRunning', 'statusIklan', 'layakDianalisa', 'grade']);
 const NULLABLE_KEYS = new Set(['adId', 'scalevPageId', 'namaKonten', 'tanggalRunning']);
@@ -180,6 +254,73 @@ export function mapDbRowToMetaTesting(row: any): MetaTestingRow {
     updatedAt: row.updated_at,
     lastSyncedAt: row.last_synced_at,
   };
+}
+
+function safeDiv(a: number, b: number): number {
+  return b ? a / b : 0;
+}
+
+/**
+ * Hitung ulang semua field skoring untuk SATU batch (semua data Meta Testing milik satu
+ * produk yang sama) — beberapa field (Bonus Budget, Bonus Volume, Rank) butuh perbandingan
+ * antar baris (MAX Spending, MAX Box, ranking Skor Total), jadi tidak bisa dihitung per baris
+ * sendiri-sendiri. Rumus disamakan persis dengan sheet "META TESTING" + "Parameter" di
+ * spreadsheet sumber EVALADS META V2. Field hasil hitungan di baris yang dikembalikan
+ * MENIMPA nilai yang tersimpan di database (yang tidak lagi dipakai/ditulis).
+ */
+export function computeMetaTestingBatch(rows: MetaTestingRow[]): MetaTestingRow[] {
+  const p = SCORING_PARAMS;
+
+  const withoutBatchFields = rows.map((row) => {
+    const cpr = safeDiv(row.spending, row.totalLead);
+    const cr = safeDiv(row.closing, row.totalLead) * 100;
+    const cpa = safeDiv(row.spending, row.box);
+    const cpaPersen = safeDiv(cpa, p.targetCpm) * 100;
+    const layakDianalisa = row.spending >= p.minSpendingThreshold || row.totalLead >= p.minLeadThreshold ? 'Ya' : 'Tidak';
+
+    const skorCpr = cpr > 0 ? Math.min(p.bobotCpr, (p.bobotCpr * p.targetCpr) / cpr) : 0;
+    const skorCpm = row.cpm > 0 ? Math.min(p.bobotCpm, (p.bobotCpm * p.targetCpm) / row.cpm) : 0;
+    const skorCtr = row.ctr > 0 ? Math.min(p.bobotCtr, (p.bobotCtr * row.ctr) / p.targetCtr) : 0;
+    const skorHook = row.hookRate > 0 ? Math.min(p.bobotHookRate, (p.bobotHookRate * row.hookRate) / p.targetHookRate) : 0;
+    const skorHold = row.holdRate > 0 ? Math.min(p.bobotHoldRate, (p.bobotHoldRate * row.holdRate) / p.targetHoldRate) : 0;
+
+    return { ...row, cpr, cr, cpa, cpaPersen, layakDianalisa, skorCpr, skorCpm, skorCtr, skorHook, skorHold };
+  });
+
+  const maxSpending = Math.max(0, ...withoutBatchFields.map((r) => r.spending));
+  const maxBox = Math.max(0, ...withoutBatchFields.map((r) => r.box));
+
+  const scored = withoutBatchFields.map((row) => {
+    const bonusBudget =
+      row.cpr > 0 && row.cpr <= p.targetCpr && maxSpending > 0 ? p.bobotBonusBudget * safeDiv(row.spending, maxSpending) : 0;
+    const skorKonten = row.skorCpr + row.skorCpm + row.skorCtr + row.skorHook + row.skorHold + bonusBudget;
+
+    const layak = row.layakDianalisa === 'Ya';
+    const skorCr = layak ? Math.min(p.bobotCr, (p.bobotCr * row.cr) / p.targetCrPercent) : 0;
+    const skorCpaPersen = !layak
+      ? 0
+      : row.cpaPersen <= p.breakEvenCpaPercent
+        ? p.bobotCpaPersen
+        : row.cpaPersen >= p.capCpaPercent
+          ? 0
+          : (p.bobotCpaPersen * (p.capCpaPercent - row.cpaPersen)) / (p.capCpaPercent - p.breakEvenCpaPercent);
+    const bonusVolume = layak && maxBox > 0 ? p.bobotBonusVolume * safeDiv(row.box, maxBox) : 0;
+    const skorKonvert = layak ? skorCr + skorCpaPersen + bonusVolume : 0;
+
+    const skorTotal = skorKonten + skorKonvert;
+    const grade = skorTotal >= p.gradeAThreshold ? 'A' : skorTotal >= p.gradeBThreshold ? 'B' : skorTotal >= p.gradeCThreshold ? 'C' : 'D';
+
+    return { ...row, bonusBudget, skorKonten, skorCr, skorCpaPersen, bonusVolume, skorKonvert, skorTotal, grade };
+  });
+
+  // Ranking gaya "competition ranking" (sama seperti RANK() di Google Sheets/Excel): baris
+  // dengan Skor Total sama dapat rank yang sama, rank berikutnya loncat sejumlah baris yang
+  // seri di atasnya (bukan rank berurutan rapat).
+  const sortedTotals = [...scored].sort((a, b) => b.skorTotal - a.skorTotal);
+  return scored.map((row) => ({
+    ...row,
+    peringkat: sortedTotals.findIndex((r) => r.skorTotal === row.skorTotal) + 1,
+  }));
 }
 
 export function fieldValueFromBody(field: MetaTestingField, body: any): string | number | null {

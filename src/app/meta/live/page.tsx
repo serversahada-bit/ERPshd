@@ -1,5 +1,10 @@
+import { Suspense } from 'react';
 import MetaLiveDashboard from '@/components/views/MetaLiveDashboard';
 
 export default function MetaLivePage() {
-  return <MetaLiveDashboard />;
+  return (
+    <Suspense>
+      <MetaLiveDashboard />
+    </Suspense>
+  );
 }

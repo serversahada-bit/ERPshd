@@ -41,6 +41,17 @@ export async function testScalevConnection(apiKey: string): Promise<{ storeCount
   return { storeCount: data.data.length };
 }
 
+export interface ScalevStore {
+  id: number;
+  name: string;
+}
+
+/** Daftar semua store yang bisa diakses API key ini — dipakai buat dropdown pilih Scalev Test Store ID di Master Produk, supaya tidak perlu cari manual ID-nya di dashboard Scalev. */
+export async function fetchScalevStores(apiKey: string): Promise<ScalevStore[]> {
+  const data = await scalevGet<{ data: { id: number; name: string }[] }>('/stores', apiKey, { page_size: '100' });
+  return data.data.map((s) => ({ id: s.id, name: s.name }));
+}
+
 export interface ScalevPage {
   id: number;
   name: string;

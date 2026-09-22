@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { RAW_FIELD_SECTIONS, RAW_FIELDS, MetaTestingRow } from '@/lib/metaTesting';
+import { RAW_FIELD_SECTIONS, RAW_FIELDS, MANUAL_INPUT_KEYS, MetaTestingRow } from '@/lib/metaTesting';
 import { MetaAdsProduct } from '@/lib/metaAdsProducts';
 import { ScalevPage } from '@/lib/scalevApi';
 import AdIdPicker from './AdIdPicker';
@@ -56,7 +56,14 @@ export default function MetaTestingFormModal({ mode, products, initialData, onCl
           setScalevPages([]);
           return;
         }
-        setScalevPages(json.data as ScalevPage[]);
+        const pages = json.data as ScalevPage[];
+        setScalevPages(pages);
+        // Store testing kebanyakan cuma punya 1 landing page — auto-pilih supaya tidak
+        // perlu klik dropdown kalau memang tidak ada pilihan lain. Tidak menimpa kalau
+        // sudah ada nilai tersimpan (mis. lagi edit data lama).
+        if (pages.length === 1) {
+          setForm((prev) => (prev.scalevPageId ? prev : { ...prev, scalevPageId: String(pages[0].id) }));
+        }
       })
       .catch(() => {
         if (!cancelled) setPagesError('Gagal terhubung ke Scalev.');
@@ -77,8 +84,11 @@ export default function MetaTestingFormModal({ mode, products, initialData, onCl
       .then((res) => res.json())
       .then((json) => {
         if (cancelled || !json.success) return;
-        const options = (json.data as { id: number; namaKonten: string | null }[])
-          .filter((r) => r.namaKonten)
+        // Nama Konten cuma muncul setelah konten ACC "Ready to Post" (samakan dengan
+        // spreadsheet sumber: kolom Nama Konten di sheet META TESTING baru terisi
+        // setelah status ORDER SCRIPT = READY POST).
+        const options = (json.data as { id: number; namaKonten: string | null; status: string }[])
+          .filter((r) => r.namaKonten && r.status === 'READY POST')
           .map((r) => ({ id: r.id, namaKonten: r.namaKonten as string }));
         setScriptKontenOptions(options);
       })
@@ -175,30 +185,41 @@ export default function MetaTestingFormModal({ mode, products, initialData, onCl
                 {section.title}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {section.fields.map((field) => (
+                {section.fields.map((field) => {
+                  const isManual = MANUAL_INPUT_KEYS.includes(field.key);
+                  const lockedClass = 'bg-slate-50 text-slate-400 cursor-not-allowed';
+                  return (
                   <div key={field.key}>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                       {field.label}
                       {field.suffix ? ` (${field.suffix})` : ''}
+                      {!isManual && <span className="ml-1 font-normal normal-case text-slate-400">(Otomatis)</span>}
                     </label>
                     {field.key === 'adId' ? (
-                      <AdIdPicker value={form[field.key]} onChange={(id) => handleChange(field.key, id)} />
+                      <AdIdPicker
+                        value={form[field.key]}
+                        onChange={(id) => handleChange(field.key, id)}
+                        productId={productId}
+                        autoSearchName={form.namaKonten}
+                      />
                     ) : field.key === 'namaKonten' ? (
                       <>
-                        <input
-                          type="text"
-                          list="meta-testing-nama-konten-options"
+                        <select
                           value={form[field.key]}
                           onChange={(e) => handleChange(field.key, e.target.value)}
-                          placeholder={isLoadingKonten ? 'Memuat daftar konten...' : 'Pilih atau ketik nama konten'}
-                          className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500"
-                        />
-                        <datalist id="meta-testing-nama-konten-options">
+                          disabled={isLoadingKonten || scriptKontenOptions.length === 0}
+                          className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500 disabled:bg-slate-50 disabled:text-slate-400"
+                        >
+                          <option value="">
+                            {isLoadingKonten ? 'Memuat daftar konten...' : '- Pilih nama konten -'}
+                          </option>
                           {scriptKontenOptions.map((opt) => (
-                            <option key={opt.id} value={opt.namaKonten} />
+                            <option key={opt.id} value={opt.namaKonten}>
+                              {opt.namaKonten}
+                            </option>
                           ))}
-                        </datalist>
-                        <p className="text-[10px] text-slate-400 mt-1">Otomatis menyarankan Nama Konten yang sudah ada di Script dan Konten.</p>
+                        </select>
+                        <p className="text-[10px] text-slate-400 mt-1">Diambil dari Nama Konten yang sudah ada di Script dan Konten.</p>
                       </>
                     ) : field.key === 'scalevPageId' ? (
                       <>
@@ -228,7 +249,10 @@ export default function MetaTestingFormModal({ mode, products, initialData, onCl
                       <select
                         value={form[field.key]}
                         onChange={(e) => handleChange(field.key, e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500"
+                        disabled={!isManual}
+                        className={`w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500 ${
+                          isManual ? '' : lockedClass
+                        }`}
                       >
                         <option value="">-</option>
                         {field.options?.map((opt) => (
@@ -243,18 +267,25 @@ export default function MetaTestingFormModal({ mode, products, initialData, onCl
                         step="any"
                         value={form[field.key]}
                         onChange={(e) => handleChange(field.key, e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500"
+                        disabled={!isManual}
+                        className={`w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500 ${
+                          isManual ? '' : lockedClass
+                        }`}
                       />
                     ) : (
                       <input
                         type="text"
                         value={form[field.key]}
                         onChange={(e) => handleChange(field.key, e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500"
+                        disabled={!isManual}
+                        className={`w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500 ${
+                          isManual ? '' : lockedClass
+                        }`}
                       />
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}

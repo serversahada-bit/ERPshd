@@ -8,7 +8,17 @@ interface RowState {
   nama: string;
   sheetUrl: string;
   scalevTestStoreId: string;
+  metaAdAccountId: string;
   saving: boolean;
+}
+
+interface ScalevStoreOption {
+  id: number;
+  name: string;
+}
+interface MetaAdAccountOption {
+  id: string;
+  name: string;
 }
 
 export default function ProductMasterView() {
@@ -19,8 +29,38 @@ export default function ProductMasterView() {
   const [newNama, setNewNama] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newStoreId, setNewStoreId] = useState('');
+  const [newAdAccountId, setNewAdAccountId] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Daftar store Scalev & Ad Account Meta, diambil sekali dari API supaya user tinggal
+  // pilih dari nama-nya, tidak perlu cari/copy ID manual dari dashboard lain.
+  const [scalevStores, setScalevStores] = useState<ScalevStoreOption[]>([]);
+  const [scalevStoresError, setScalevStoresError] = useState<string | null>(null);
+  const [isLoadingScalevStores, setIsLoadingScalevStores] = useState(true);
+  const [adAccounts, setAdAccounts] = useState<MetaAdAccountOption[]>([]);
+  const [adAccountsError, setAdAccountsError] = useState<string | null>(null);
+  const [isLoadingAdAccounts, setIsLoadingAdAccounts] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/scalev-stores')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) setScalevStores(json.data as ScalevStoreOption[]);
+        else setScalevStoresError(json.error || 'Gagal memuat daftar store Scalev.');
+      })
+      .catch(() => setScalevStoresError('Gagal terhubung ke Scalev.'))
+      .finally(() => setIsLoadingScalevStores(false));
+
+    fetch('/api/meta-graph/accounts')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) setAdAccounts(json.data as MetaAdAccountOption[]);
+        else setAdAccountsError(json.error || 'Gagal memuat daftar Ad Account Meta.');
+      })
+      .catch(() => setAdAccountsError('Gagal terhubung ke Meta API.'))
+      .finally(() => setIsLoadingAdAccounts(false));
+  }, []);
 
   const fetchProducts = useCallback(async () => {
     setIsLoading(true);
@@ -38,7 +78,13 @@ export default function ProductMasterView() {
         Object.fromEntries(
           list.map((p) => [
             p.id,
-            { nama: p.nama, sheetUrl: p.sheetUrl, scalevTestStoreId: p.scalevTestStoreId ? String(p.scalevTestStoreId) : '', saving: false },
+            {
+              nama: p.nama,
+              sheetUrl: p.sheetUrl,
+              scalevTestStoreId: p.scalevTestStoreId ? String(p.scalevTestStoreId) : '',
+              metaAdAccountId: p.metaAdAccountId || '',
+              saving: false,
+            },
           ])
         )
       );
@@ -54,14 +100,21 @@ export default function ProductMasterView() {
   }, [fetchProducts]);
 
   const getRow = (p: MetaAdsProduct): RowState =>
-    rowEdits[p.id] || { nama: p.nama, sheetUrl: p.sheetUrl, scalevTestStoreId: p.scalevTestStoreId ? String(p.scalevTestStoreId) : '', saving: false };
+    rowEdits[p.id] || {
+      nama: p.nama,
+      sheetUrl: p.sheetUrl,
+      scalevTestStoreId: p.scalevTestStoreId ? String(p.scalevTestStoreId) : '',
+      metaAdAccountId: p.metaAdAccountId || '',
+      saving: false,
+    };
 
   const isDirty = (p: MetaAdsProduct) => {
     const row = getRow(p);
     return (
       row.nama !== p.nama ||
       row.sheetUrl !== p.sheetUrl ||
-      row.scalevTestStoreId !== (p.scalevTestStoreId ? String(p.scalevTestStoreId) : '')
+      row.scalevTestStoreId !== (p.scalevTestStoreId ? String(p.scalevTestStoreId) : '') ||
+      row.metaAdAccountId !== (p.metaAdAccountId || '')
     );
   };
 
@@ -81,6 +134,7 @@ export default function ProductMasterView() {
           nama: row.nama,
           sheetUrl: row.sheetUrl,
           scalevTestStoreId: row.scalevTestStoreId ? Number(row.scalevTestStoreId) : null,
+          metaAdAccountId: row.metaAdAccountId.trim() || null,
         }),
       });
       const json = await res.json();
@@ -146,6 +200,7 @@ export default function ProductMasterView() {
           nama: newNama.trim(),
           sheetUrl: newUrl.trim(),
           scalevTestStoreId: newStoreId.trim() ? Number(newStoreId.trim()) : null,
+          metaAdAccountId: newAdAccountId.trim() || null,
         }),
       });
       const json = await res.json();
@@ -156,6 +211,7 @@ export default function ProductMasterView() {
       setNewNama('');
       setNewUrl('');
       setNewStoreId('');
+      setNewAdAccountId('');
       fetchProducts();
     } catch {
       setError('Terjadi kesalahan jaringan.');
@@ -221,7 +277,7 @@ export default function ProductMasterView() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-400 mb-1">Link Google Sheets (Meta Ads)</label>
                     <input
@@ -233,12 +289,43 @@ export default function ProductMasterView() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-400 mb-1">Scalev Test Store ID (untuk Meta Testing)</label>
-                    <input
+                    <select
                       value={row.scalevTestStoreId}
-                      onChange={(e) => updateRow(p.id, { scalevTestStoreId: e.target.value.replace(/\D/g, '') })}
-                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
-                      placeholder="mis. 76353"
-                    />
+                      onChange={(e) => updateRow(p.id, { scalevTestStoreId: e.target.value })}
+                      disabled={isLoadingScalevStores}
+                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500 disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      <option value="">{isLoadingScalevStores ? 'Memuat store...' : '- Pilih store -'}</option>
+                      {row.scalevTestStoreId && !scalevStores.some((s) => String(s.id) === row.scalevTestStoreId) && (
+                        <option value={row.scalevTestStoreId}>ID {row.scalevTestStoreId} (tidak ditemukan di daftar)</option>
+                      )}
+                      {scalevStores.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.id})
+                        </option>
+                      ))}
+                    </select>
+                    {scalevStoresError && <p className="text-[10px] text-rose-500 mt-1">{scalevStoresError}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-1">Meta Ad Account ID (Dashboard Meta Live)</label>
+                    <select
+                      value={row.metaAdAccountId}
+                      onChange={(e) => updateRow(p.id, { metaAdAccountId: e.target.value })}
+                      disabled={isLoadingAdAccounts}
+                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500 disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      <option value="">{isLoadingAdAccounts ? 'Memuat akun...' : '- Pilih Ad Account -'}</option>
+                      {row.metaAdAccountId && !adAccounts.some((a) => a.id === row.metaAdAccountId) && (
+                        <option value={row.metaAdAccountId}>{row.metaAdAccountId} (tidak ditemukan di daftar)</option>
+                      )}
+                      {adAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} ({a.id})
+                        </option>
+                      ))}
+                    </select>
+                    {adAccountsError && <p className="text-[10px] text-rose-500 mt-1">{adAccountsError}</p>}
                   </div>
                 </div>
 
@@ -267,7 +354,7 @@ export default function ProductMasterView() {
             placeholder="Nama produk (mis. Gamamilk Plus)"
             className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
           />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <input
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
@@ -278,6 +365,12 @@ export default function ProductMasterView() {
               value={newStoreId}
               onChange={(e) => setNewStoreId(e.target.value.replace(/\D/g, ''))}
               placeholder="Scalev Test Store ID (opsional)"
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
+            />
+            <input
+              value={newAdAccountId}
+              onChange={(e) => setNewAdAccountId(e.target.value)}
+              placeholder="Meta Ad Account ID (opsional)"
               className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
             />
           </div>

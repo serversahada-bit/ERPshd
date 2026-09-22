@@ -29,14 +29,15 @@ export async function POST(request: Request) {
     const nama = String(body.nama || '').trim();
     const sheetUrl = String(body.sheetUrl || '').trim();
     const scalevTestStoreId = body.scalevTestStoreId ? Number(body.scalevTestStoreId) : null;
+    const metaAdAccountId = body.metaAdAccountId ? String(body.metaAdAccountId).trim() : null;
 
     if (!nama || !sheetUrl) {
       return NextResponse.json({ success: false, error: 'Nama produk dan link sheet wajib diisi.' }, { status: 400 });
     }
 
     const result = (await query(
-      'INSERT INTO meta_ads_products (nama, sheet_url, scalev_test_store_id, dibuat_oleh) VALUES (?, ?, ?, ?)',
-      [nama, sheetUrl, scalevTestStoreId, user.nama || user.nama_user || '']
+      'INSERT INTO meta_ads_products (nama, sheet_url, scalev_test_store_id, meta_ad_account_id, dibuat_oleh) VALUES (?, ?, ?, ?, ?)',
+      [nama, sheetUrl, scalevTestStoreId, metaAdAccountId, user.nama || user.nama_user || '']
     )) as any;
 
     return NextResponse.json({ success: true, message: 'Produk berhasil ditambahkan.', id: result.insertId });

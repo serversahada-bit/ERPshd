@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Loader2, PlugZap, CheckCircle2, RefreshCw, Settings2, Download } from 'lucide-react';
+import { MetaAdsProduct } from '@/lib/metaAdsProducts';
 
 interface CampaignInsight {
   campaignId: string;
@@ -28,9 +30,21 @@ function formatNumber(n: number) {
   return Math.round(n).toLocaleString('id-ID');
 }
 
-function SetupForm({ onConnected }: { onConnected: (accountName: string) => void }) {
+function SetupForm({
+  productId,
+  productNama,
+  hasGlobalToken,
+  existingAdAccountId,
+  onConnected,
+}: {
+  productId: number;
+  productNama: string;
+  hasGlobalToken: boolean;
+  existingAdAccountId: string;
+  onConnected: () => void;
+}) {
   const [accessToken, setAccessToken] = useState('');
-  const [adAccountId, setAdAccountId] = useState('');
+  const [adAccountId, setAdAccountId] = useState(existingAdAccountId);
   const [isTesting, setIsTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -42,30 +56,19 @@ function SetupForm({ onConnected }: { onConnected: (accountName: string) => void
     setSuccess(null);
 
     try {
-      const testRes = await fetch('/api/meta-graph/test', {
+      const res = await fetch('/api/meta-graph/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken, adAccountId }),
+        body: JSON.stringify({ accessToken, adAccountId, productId }),
       });
-      const testJson = await testRes.json();
-      if (!testJson.success) {
-        setError(testJson.error || 'Gagal terhubung ke Meta API.');
+      const json = await res.json();
+      if (!json.success) {
+        setError(json.error || 'Gagal terhubung ke Meta API.');
         return;
       }
 
-      const saveRes = await fetch('/api/meta-graph/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken, adAccountId, accountName: testJson.data.name }),
-      });
-      const saveJson = await saveRes.json();
-      if (!saveJson.success) {
-        setError(saveJson.error || 'Koneksi berhasil tapi gagal menyimpan kredensial.');
-        return;
-      }
-
-      setSuccess(testJson.message);
-      setTimeout(() => onConnected(testJson.data.name), 800);
+      setSuccess(json.message);
+      setTimeout(onConnected, 800);
     } catch {
       setError('Terjadi kesalahan jaringan.');
     } finally {
@@ -80,8 +83,8 @@ function SetupForm({ onConnected }: { onConnected: (accountName: string) => void
           <PlugZap size={20} />
         </div>
         <div>
-          <h3 className="font-bold text-sm text-slate-900">Hubungkan Meta Ads API</h3>
-          <p className="text-xs text-slate-500 mt-0.5">Ambil data campaign langsung dari akun iklan Meta Anda.</p>
+          <h3 className="font-bold text-sm text-slate-900">Hubungkan Meta Ads API — {productNama}</h3>
+          <p className="text-xs text-slate-500 mt-0.5">Ambil data campaign langsung dari akun iklan Meta untuk produk ini.</p>
         </div>
       </div>
 
@@ -99,21 +102,24 @@ function SetupForm({ onConnected }: { onConnected: (accountName: string) => void
         )}
 
         <div>
-          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Access Token</label>
+          <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+            Access Token {hasGlobalToken && <span className="font-normal text-slate-400">(sudah tersimpan, isi lagi kalau mau ganti)</span>}
+          </label>
           <textarea
             value={accessToken}
             onChange={(e) => setAccessToken(e.target.value)}
             rows={3}
-            placeholder="EAAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            placeholder={hasGlobalToken ? '•••••••••••••••••••• (biarkan kosong kalau tidak ganti)' : 'EAAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'}
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
           />
           <p className="text-[11px] text-slate-400 mt-1">
-            Dari Meta for Developers &rarr; Graph API Explorer, atau System User token dengan izin <code>ads_read</code>.
+            Dari Meta for Developers &rarr; Graph API Explorer, atau System User token dengan izin <code>ads_read</code>. Token ini
+            dipakai bersama untuk semua produk.
           </p>
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Ad Account ID</label>
+          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Ad Account ID (khusus produk ini)</label>
           <input
             type="text"
             value={adAccountId}
@@ -121,12 +127,14 @@ function SetupForm({ onConnected }: { onConnected: (accountName: string) => void
             placeholder="act_1234567890 atau 1234567890"
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
           />
-          <p className="text-[11px] text-slate-400 mt-1">Terlihat di Ads Manager, di URL atau pengaturan akun.</p>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Terlihat di Ads Manager, di URL atau pengaturan akun. Tiap produk boleh punya Ad Account ID berbeda.
+          </p>
         </div>
 
         <button
           type="submit"
-          disabled={isTesting || !accessToken.trim() || !adAccountId.trim()}
+          disabled={isTesting || (!accessToken.trim() && !hasGlobalToken) || !adAccountId.trim()}
           className="w-full px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-60"
         >
           {isTesting && <Loader2 size={13} className="animate-spin" />}
@@ -138,9 +146,14 @@ function SetupForm({ onConnected }: { onConnected: (accountName: string) => void
 }
 
 export default function MetaLiveDashboard() {
+  const searchParams = useSearchParams();
+  const pid = searchParams.get('pid');
+  const productId = pid ? Number(pid) : null;
+
   const [checking, setChecking] = useState(true);
+  const [product, setProduct] = useState<MetaAdsProduct | null>(null);
+  const [hasGlobalToken, setHasGlobalToken] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [accountName, setAccountName] = useState('');
   const [campaigns, setCampaigns] = useState<CampaignInsight[]>([]);
   const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
@@ -150,30 +163,37 @@ export default function MetaLiveDashboard() {
   const [datePreset, setDatePreset] = useState('today');
 
   const checkSettings = useCallback(async () => {
+    if (!productId) return;
     setChecking(true);
     try {
-      const res = await fetch('/api/meta-graph/settings');
-      const json = await res.json();
-      if (json.success && json.data.hasToken && json.data.adAccountId) {
-        setConnected(true);
-        setAccountName(json.data.accountName || '');
-      } else {
-        setConnected(false);
-      }
+      const [settingsRes, productsRes] = await Promise.all([
+        fetch('/api/meta-graph/settings'),
+        fetch('/api/meta-ads/products'),
+      ]);
+      const settingsJson = await settingsRes.json();
+      const productsJson = await productsRes.json();
+
+      const hasToken = Boolean(settingsJson.success && settingsJson.data.hasToken);
+      setHasGlobalToken(hasToken);
+
+      const found = productsJson.success ? (productsJson.data as MetaAdsProduct[]).find((p) => p.id === productId) : null;
+      setProduct(found || null);
+      setConnected(Boolean(hasToken && found?.metaAdAccountId));
     } finally {
       setChecking(false);
     }
-  }, []);
+  }, [productId]);
 
   useEffect(() => {
     checkSettings();
   }, [checkSettings]);
 
   const loadCampaigns = useCallback(async () => {
+    if (!productId) return;
     setIsLoadingCampaigns(true);
     setLoadError(null);
     try {
-      const res = await fetch(`/api/meta-graph/campaigns?datePreset=${datePreset}`);
+      const res = await fetch(`/api/meta-graph/campaigns?datePreset=${datePreset}&productId=${productId}`);
       const json = await res.json();
       if (!json.success) {
         setLoadError(json.error || 'Gagal mengambil data campaign.');
@@ -186,20 +206,21 @@ export default function MetaLiveDashboard() {
     } finally {
       setIsLoadingCampaigns(false);
     }
-  }, [datePreset]);
+  }, [datePreset, productId]);
 
   useEffect(() => {
     if (connected) loadCampaigns();
   }, [connected, loadCampaigns]);
 
   const handlePull = async () => {
+    if (!productId) return;
     setIsPulling(true);
     setPullError(null);
     try {
       const res = await fetch('/api/meta-graph/pull', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datePreset }),
+        body: JSON.stringify({ datePreset, productId }),
       });
       const json = await res.json();
       if (!json.success) {
@@ -214,7 +235,7 @@ export default function MetaLiveDashboard() {
     }
   };
 
-  if (checking) {
+  if (!productId || checking) {
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-10 flex items-center justify-center gap-2 text-slate-400 text-sm">
         <Loader2 size={16} className="animate-spin" />
@@ -224,7 +245,15 @@ export default function MetaLiveDashboard() {
   }
 
   if (!connected) {
-    return <SetupForm onConnected={() => { setConnected(true); checkSettings(); }} />;
+    return (
+      <SetupForm
+        productId={productId}
+        productNama={product?.nama || ''}
+        hasGlobalToken={hasGlobalToken}
+        existingAdAccountId={product?.metaAdAccountId || ''}
+        onConnected={() => checkSettings()}
+      />
+    );
   }
 
   const totalSpend = campaigns.reduce((s, c) => s + c.spend, 0);
@@ -237,7 +266,7 @@ export default function MetaLiveDashboard() {
         <div className="flex items-center gap-2 min-w-0">
           <h3 className="font-bold text-sm sm:text-base text-slate-900">Dashboard Meta</h3>
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 shrink-0">Live API</span>
-          {accountName && <span className="text-xs text-slate-400 truncate">&middot; {accountName}</span>}
+          {product && <span className="text-xs text-slate-400 truncate">&middot; {product.nama} ({product.metaAdAccountId})</span>}
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">

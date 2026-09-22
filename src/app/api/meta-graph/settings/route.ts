@@ -8,6 +8,8 @@ function maskToken(token: string | null): string {
   return `${token.slice(0, 6)}${'•'.repeat(10)}${token.slice(-4)}`;
 }
 
+// Access Token Meta tetap global (satu System User token bisa akses banyak Ad Account) —
+// Ad Account ID sendiri sekarang per-produk, lihat meta_ads_products.meta_ad_account_id.
 export async function GET() {
   const user = await getSession();
   if (!user) {
@@ -15,7 +17,7 @@ export async function GET() {
   }
 
   try {
-    const rows = (await query('SELECT * FROM meta_api_settings WHERE id = 1')) as any[];
+    const rows = (await query('SELECT access_token FROM meta_api_settings WHERE id = 1')) as any[];
     const row = rows[0];
 
     return NextResponse.json({
@@ -23,8 +25,6 @@ export async function GET() {
       data: {
         hasToken: Boolean(row?.access_token),
         maskedToken: maskToken(row?.access_token || null),
-        adAccountId: row?.ad_account_id || '',
-        accountName: row?.account_name || '',
       },
     });
   } catch (error: any) {
@@ -42,24 +42,21 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const accessToken = String(body.accessToken || '').trim();
-    const adAccountId = String(body.adAccountId || '').trim();
-    const accountName = String(body.accountName || '').trim();
 
-    if (!accessToken || !adAccountId) {
-      return NextResponse.json({ success: false, error: 'Access Token dan Ad Account ID wajib diisi.' }, { status: 400 });
+    if (!accessToken) {
+      return NextResponse.json({ success: false, error: 'Access Token wajib diisi.' }, { status: 400 });
     }
 
     await query(
-      `INSERT INTO meta_api_settings (id, access_token, ad_account_id, account_name, diubah_oleh)
-       VALUES (1, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE access_token = VALUES(access_token), ad_account_id = VALUES(ad_account_id),
-         account_name = VALUES(account_name), diubah_oleh = VALUES(diubah_oleh)`,
-      [accessToken, adAccountId, accountName, user.nama || user.nama_user || '']
+      `INSERT INTO meta_api_settings (id, access_token, diubah_oleh)
+       VALUES (1, ?, ?)
+       ON DUPLICATE KEY UPDATE access_token = VALUES(access_token), diubah_oleh = VALUES(diubah_oleh)`,
+      [accessToken, user.nama || user.nama_user || '']
     );
 
-    return NextResponse.json({ success: true, message: 'Kredensial berhasil disimpan.' });
+    return NextResponse.json({ success: true, message: 'Access Token berhasil disimpan.' });
   } catch (error: any) {
     console.error('Meta Graph Settings POST Error:', error);
-    return NextResponse.json({ success: false, error: 'Gagal menyimpan kredensial.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal menyimpan Access Token.' }, { status: 500 });
   }
 }

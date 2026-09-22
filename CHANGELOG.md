@@ -10,6 +10,31 @@ Catatan perubahan dan improvement pada project ERP ini. Setiap ada perubahan ber
 
 ---
 
+## 2026-09-22 - Dropdown otomatis Scalev/Meta + auto-fill Ad ID dari Nama Konten
+
+- Master Produk (`/produk`): field "Scalev Test Store ID" dan "Meta Ad Account ID" diganti jadi **dropdown** yang ambil daftar asli dari Scalev API (`/api/scalev-stores`) dan Meta Graph API (`/api/meta-graph/accounts`) — tidak perlu lagi buka dashboard lain buat cari & copy ID manual.
+- **Ad ID di Meta Testing sekarang bisa lebih dari satu** (dipisah koma di kolom `ad_id`, diperlebar jadi VARCHAR(500) — lihat [scripts/sql/2026-09-22-meta-testing-adid-multi.sql](scripts/sql/2026-09-22-meta-testing-adid-multi.sql)). Ditemukan pola nyata: satu konten/creative yang sama diupload ke beberapa ad set/campaign berbeda dengan nama persis sama tapi Ad ID beda-beda — field Ad ID di form sekarang **auto-fill semuanya sekaligus** begitu Nama Konten dipilih (bukan cuma satu), ditampilkan sebagai chip yang bisa ditambah/dihapus manual. Saat sync, metrik dari semua Ad ID itu **digabung**: Spend/Impressions/Lead dijumlah, lalu CTR/CPM/Hook Rate/Hold Rate dihitung ULANG dari total gabungan (bukan rata-rata rasio per-ad, itu akan salah kalau volume tiap ad beda) — lihat `fetchCombinedAdInsight` di [src/lib/metaGraphApi.ts](src/lib/metaGraphApi.ts).
+- **Scalev (Closing/Box) jadi opsional saat sync** — kalau Store/Page Scalev produk itu belum diatur, sync tetap jalan cuma ambil data dari Meta (Spending, Lead, Hook/Hold Rate, CTR, CPM); Closing/Box/CR/CPA/CPA% dibiarkan sesuai nilai tersimpan sebelumnya sampai Scalev diurus lagi.
+- Form Meta Testing: field **Scalev Page ID** auto-terisi kalau store testing produknya cuma punya 1 landing page (kasus paling umum) — nama landing page Scalev ternyata tidak sama dengan Nama Konten (beda konvensi penamaan dari Meta Ads), jadi tidak bisa di-auto-fill lewat pencocokan nama seperti Ad ID; auto-pilih-kalau-cuma-1-opsi adalah pendekatan yang benar-benar reliable untuk Scalev.
+- Chip Ad ID sekarang menampilkan **nama iklan asli**, bukan cuma angka ID mentah — waktu buka form Edit data lama, nama di-lookup langsung by ID lewat endpoint baru `/api/meta-ads-lookup` (`fetchAdsByIds` di metaGraphApi.ts), bukan cuma mengandalkan cache dari hasil pencarian sebelumnya.
+- Ditest full end-to-end di dev lokal (login, cari store/akun asli, auto-fill & gabung 6 Ad ID sekaligus, sync berhasil dengan angka yang masuk akal).
+
+## 2026-09-22 - Auto-sync Meta Testing tiap jam + Ad Account ID Meta jadi per-produk
+
+- Sync Meta Graph API + Scalev untuk Meta Testing sekarang bisa jalan **otomatis tiap 1 jam** untuk semua konten berstatus "Running" (`src/lib/metaTestingScheduler.ts`, didaftarkan di `instrumentation.ts`), tidak perlu klik tombol "Sync" manual satu-satu. Logika sync-nya dipindah ke `src/lib/metaTestingSyncRunner.ts` supaya bisa dipakai bareng oleh tombol manual dan penjadwal otomatis.
+- **Ad Account ID Meta sekarang per-produk** (kolom baru `meta_ads_products.meta_ad_account_id`), bukan 1 setting global lagi — jadi tidak perlu gonta-ganti manual kalau kelola beberapa akun Meta Ads untuk produk berbeda. Access Token tetap global (satu token bisa akses banyak akun). Diatur lewat Master Produk (`/produk`) untuk isi Ad Account ID per produk, lalu "Tes Koneksi" di Dashboard Meta Live (`/meta/live`) per produk yang aktif dipilih.
+- Perlu migrasi database baru sebelum deploy: [scripts/sql/2026-09-22-meta-ad-account-per-product.sql](scripts/sql/2026-09-22-meta-ad-account-per-product.sql) (sudah dijalankan di dev lokal, **belum** di production).
+
+## 2026-09-22 - Meta Testing: skoring & ranking otomatis + Nama Konten dikunci ke Ready to Post
+
+- Field skoring di Meta Testing (CPR, CR, CPA, CPA%, Layak Dianalisa, Skor CPR/CPM/CTR/Hook/Hold, Bonus Budget, Skor Konten, Skor CR, Skor CPA%, Bonus Volume, Skor Konvert, Skor Total, Rank, Grade) **tidak lagi input manual** — dihitung otomatis lewat `computeMetaTestingBatch()` di [src/lib/metaTesting.ts](src/lib/metaTesting.ts), rumus & parameter (target/bobot) disamakan persis dengan spreadsheet sumber "EVALADS META V2" (sheet META TESTING + Parameter, diambil via Google Drive export).
+- Bonus Budget, Bonus Volume, dan Rank dihitung per batch **satu produk** (butuh MAX Spending/Box dan ranking Skor Total antar konten produk yang sama) — dihitung di API `GET /api/meta-testing` sebelum dikirim ke frontend, bukan disimpan ke database.
+- Dropdown Nama Konten di form Meta Testing sekarang cuma menampilkan Script Konten yang statusnya **READY POST** (sebelumnya semua Script Konten yang Nama Konten-nya tidak kosong, apapun status-nya) — menyamakan dengan spreadsheet sumber ("Nama Konten akan muncul setelah konten ACC Ready to Post").
+
+## 2026-09-22 - Nama Konten di Meta Testing dikunci ke pilihan dari Script dan Konten
+
+- Field "Nama Konten" di form Meta Testing ([MetaTestingFormModal.tsx](src/components/views/MetaTestingFormModal.tsx)) diubah dari input teks bebas + saran (datalist) menjadi dropdown pilihan — sekarang hanya bisa memilih dari Nama Konten yang sudah ada di Script dan Konten untuk produk yang sama, tidak bisa lagi mengetik teks bebas. Menyamakan perilaku dengan Script dan Konten, yang mana field itu juga read-only/auto-generated (bukan input manual).
+
 ## 2026-09-22 - Fitur baru "Closing Box CS" + auto-compute field Meta Ads
 
 - Modul baru **Closing Box CS** (`/meta/closing-box-cs`): pencatatan harian Lead CS (FORM/WA), New Customer (Closing/Box), dan Follow Up (Closing/Box) per Platform & ADV, dengan metrik otomatis Closing Rate, Up Selling, Closing Rate All, Up Selling All. Butuh tabel baru `closing_box_cs` di database Advertiser — jalankan [scripts/sql/2026-09-22-create-closing-box-cs.sql](scripts/sql/2026-09-22-create-closing-box-cs.sql) dulu sebelum deploy.

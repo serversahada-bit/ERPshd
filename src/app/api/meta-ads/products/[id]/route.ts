@@ -39,6 +39,10 @@ export async function PUT(request: Request, { params }: RouteParams) {
       fields.push('scalev_test_store_id = ?');
       values.push(body.scalevTestStoreId ? Number(body.scalevTestStoreId) : null);
     }
+    if ('metaAdAccountId' in body) {
+      fields.push('meta_ad_account_id = ?');
+      values.push(body.metaAdAccountId ? String(body.metaAdAccountId).trim() : null);
+    }
 
     if (fields.length === 0) {
       return NextResponse.json({ success: false, error: 'Tidak ada perubahan yang dikirim.' }, { status: 400 });

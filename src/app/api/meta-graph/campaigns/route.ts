@@ -11,13 +11,14 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const datePreset = searchParams.get('datePreset') || 'today';
-
-    const settingsRows = (await query('SELECT account_name FROM meta_api_settings WHERE id = 1')) as any[];
-    const accountName = settingsRows[0]?.account_name || '';
+    const productId = Number(searchParams.get('productId'));
+    if (!productId) {
+      return NextResponse.json({ success: false, error: 'Produk wajib dipilih.' }, { status: 400 });
+    }
 
     const rows = (await query(
-      'SELECT * FROM meta_api_campaign_snapshots WHERE date_preset = ? ORDER BY spend DESC',
-      [datePreset]
+      'SELECT * FROM meta_api_campaign_snapshots WHERE product_id = ? AND date_preset = ? ORDER BY spend DESC',
+      [productId, datePreset]
     )) as any[];
 
     const data = rows.map((r) => ({
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
 
     const lastFetchedAt = rows.length > 0 ? rows.reduce((latest, r) => (r.fetched_at > latest ? r.fetched_at : latest), rows[0].fetched_at) : null;
 
-    return NextResponse.json({ success: true, data, accountName, lastFetchedAt });
+    return NextResponse.json({ success: true, data, lastFetchedAt });
   } catch (error: any) {
     console.error('Meta Graph Campaigns Error:', error);
     return NextResponse.json(

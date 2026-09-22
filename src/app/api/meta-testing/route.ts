@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { queryAdvertiser as query } from '@/lib/dbAdvertiser';
 import { getSession } from '@/lib/auth';
-import { RAW_FIELDS, fieldValueFromBody, mapDbRowToMetaTesting } from '@/lib/metaTesting';
+import { RAW_FIELDS, fieldValueFromBody, mapDbRowToMetaTesting, computeMetaTestingBatch } from '@/lib/metaTesting';
 
 export async function GET(request: Request) {
   const user = await getSession();
@@ -29,7 +29,25 @@ export async function GET(request: Request) {
            ORDER BY mt.created_at DESC`
         )) as any[]);
 
-    return NextResponse.json({ success: true, data: rows.map(mapDbRowToMetaTesting) });
+    const mapped = rows.map(mapDbRowToMetaTesting);
+
+    // Skor/rank dihitung per batch produk (butuh MAX Spending/Box & ranking Skor Total
+    // dalam satu produk) — kalau tidak difilter productId, kelompokkan dulu per produk
+    // supaya batch-nya tidak tercampur antar produk.
+    let computed: typeof mapped;
+    if (productId) {
+      computed = computeMetaTestingBatch(mapped);
+    } else {
+      const byProduct = new Map<number, typeof mapped>();
+      for (const row of mapped) {
+        const group = byProduct.get(row.productId) || [];
+        group.push(row);
+        byProduct.set(row.productId, group);
+      }
+      computed = Array.from(byProduct.values()).flatMap((group) => computeMetaTestingBatch(group));
+    }
+
+    return NextResponse.json({ success: true, data: computed });
   } catch (error: any) {
     console.error('Meta Testing GET Error:', error);
     return NextResponse.json({ success: false, error: 'Gagal mengambil data Meta Testing.' }, { status: 500 });

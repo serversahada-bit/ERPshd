@@ -10,6 +10,10 @@ Catatan perubahan dan improvement pada project ERP ini. Setiap ada perubahan ber
 
 ---
 
+## 2026-09-22 - Dropdown Ad Account ID juga di form koneksi Meta (/meta/live)
+
+- Form "Hubungkan Meta Ads API" di `/meta/live` masih pakai input teks manual untuk Ad Account ID (inkonsisten dengan dropdown otomatis yang sudah ada di Master Produk) — sekarang begitu Access Token global sudah tersimpan, field ini otomatis jadi dropdown dari daftar akun asli, fallback ke input teks manual kalau token belum ada/gagal ambil daftar.
+
 ## 2026-09-22 - Dropdown otomatis Scalev/Meta + auto-fill Ad ID dari Nama Konten
 
 - Master Produk (`/produk`): field "Scalev Test Store ID" dan "Meta Ad Account ID" diganti jadi **dropdown** yang ambil daftar asli dari Scalev API (`/api/scalev-stores`) dan Meta Graph API (`/api/meta-graph/accounts`) — tidak perlu lagi buka dashboard lain buat cari & copy ID manual.

@@ -30,6 +30,11 @@ function formatNumber(n: number) {
   return Math.round(n).toLocaleString('id-ID');
 }
 
+interface MetaAdAccountOption {
+  id: string;
+  name: string;
+}
+
 function SetupForm({
   productId,
   productNama,
@@ -48,6 +53,24 @@ function SetupForm({
   const [isTesting, setIsTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [adAccounts, setAdAccounts] = useState<MetaAdAccountOption[]>([]);
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
+
+  // Kalau Access Token global sudah tersimpan, langsung ambil daftar Ad Account asli dari
+  // token itu — tidak perlu user cari & ketik ID manual dari Ads Manager.
+  useEffect(() => {
+    if (!hasGlobalToken) return;
+    setIsLoadingAccounts(true);
+    fetch('/api/meta-graph/accounts')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) setAdAccounts(json.data as MetaAdAccountOption[]);
+        else setAccountsError(json.error || 'Gagal memuat daftar Ad Account.');
+      })
+      .catch(() => setAccountsError('Gagal terhubung ke Meta API.'))
+      .finally(() => setIsLoadingAccounts(false));
+  }, [hasGlobalToken]);
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,16 +143,38 @@ function SetupForm({
 
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1.5">Ad Account ID (khusus produk ini)</label>
-          <input
-            type="text"
-            value={adAccountId}
-            onChange={(e) => setAdAccountId(e.target.value)}
-            placeholder="act_1234567890 atau 1234567890"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
-          />
+          {hasGlobalToken && !accountsError ? (
+            <select
+              value={adAccountId}
+              onChange={(e) => setAdAccountId(e.target.value)}
+              disabled={isLoadingAccounts}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">{isLoadingAccounts ? 'Memuat akun...' : '- Pilih Ad Account -'}</option>
+              {adAccountId && !adAccounts.some((a) => a.id === adAccountId) && (
+                <option value={adAccountId}>{adAccountId} (tidak ditemukan di daftar)</option>
+              )}
+              {adAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.id})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={adAccountId}
+              onChange={(e) => setAdAccountId(e.target.value)}
+              placeholder="act_1234567890 atau 1234567890"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+            />
+          )}
           <p className="text-[11px] text-slate-400 mt-1">
-            Terlihat di Ads Manager, di URL atau pengaturan akun. Tiap produk boleh punya Ad Account ID berbeda.
+            {hasGlobalToken && !accountsError
+              ? 'Diambil otomatis dari Access Token yang tersimpan. Tiap produk boleh punya Ad Account ID berbeda.'
+              : 'Terlihat di Ads Manager, di URL atau pengaturan akun. Tiap produk boleh punya Ad Account ID berbeda.'}
           </p>
+          {accountsError && <p className="text-[10px] text-rose-500 mt-1">{accountsError} — isi manual di atas dulu.</p>}
         </div>
 
         <button

@@ -3,12 +3,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { MetaAdsProduct } from '@/lib/metaAdsProducts';
+import SearchableSelect from './SearchableSelect';
 
 interface RowState {
   nama: string;
   sheetUrl: string;
   scalevTestStoreId: string;
   metaAdAccountId: string;
+  scalevStoreId: string;
   saving: boolean;
 }
 
@@ -83,6 +85,7 @@ export default function ProductMasterView() {
               sheetUrl: p.sheetUrl,
               scalevTestStoreId: p.scalevTestStoreId ? String(p.scalevTestStoreId) : '',
               metaAdAccountId: p.metaAdAccountId || '',
+              scalevStoreId: p.scalevStoreId ? String(p.scalevStoreId) : '',
               saving: false,
             },
           ])
@@ -105,6 +108,7 @@ export default function ProductMasterView() {
       sheetUrl: p.sheetUrl,
       scalevTestStoreId: p.scalevTestStoreId ? String(p.scalevTestStoreId) : '',
       metaAdAccountId: p.metaAdAccountId || '',
+      scalevStoreId: p.scalevStoreId ? String(p.scalevStoreId) : '',
       saving: false,
     };
 
@@ -114,7 +118,8 @@ export default function ProductMasterView() {
       row.nama !== p.nama ||
       row.sheetUrl !== p.sheetUrl ||
       row.scalevTestStoreId !== (p.scalevTestStoreId ? String(p.scalevTestStoreId) : '') ||
-      row.metaAdAccountId !== (p.metaAdAccountId || '')
+      row.metaAdAccountId !== (p.metaAdAccountId || '') ||
+      row.scalevStoreId !== (p.scalevStoreId ? String(p.scalevStoreId) : '')
     );
   };
 
@@ -135,6 +140,7 @@ export default function ProductMasterView() {
           sheetUrl: row.sheetUrl,
           scalevTestStoreId: row.scalevTestStoreId ? Number(row.scalevTestStoreId) : null,
           metaAdAccountId: row.metaAdAccountId.trim() || null,
+          scalevStoreId: row.scalevStoreId ? Number(row.scalevStoreId) : null,
         }),
       });
       const json = await res.json();
@@ -277,7 +283,7 @@ export default function ProductMasterView() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-400 mb-1">Link Google Sheets (Meta Ads)</label>
                     <input
@@ -309,23 +315,27 @@ export default function ProductMasterView() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-400 mb-1">Meta Ad Account ID (Dashboard Meta Live)</label>
-                    <select
+                    <SearchableSelect
                       value={row.metaAdAccountId}
-                      onChange={(e) => updateRow(p.id, { metaAdAccountId: e.target.value })}
+                      onChange={(id) => updateRow(p.id, { metaAdAccountId: id })}
+                      options={adAccounts.map((a) => ({ id: a.id, label: a.name }))}
                       disabled={isLoadingAdAccounts}
-                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500 disabled:bg-slate-50 disabled:text-slate-400"
-                    >
-                      <option value="">{isLoadingAdAccounts ? 'Memuat akun...' : '- Pilih Ad Account -'}</option>
-                      {row.metaAdAccountId && !adAccounts.some((a) => a.id === row.metaAdAccountId) && (
-                        <option value={row.metaAdAccountId}>{row.metaAdAccountId} (tidak ditemukan di daftar)</option>
-                      )}
-                      {adAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name} ({a.id})
-                        </option>
-                      ))}
-                    </select>
+                      disabledPlaceholder="Memuat akun..."
+                      placeholder="Ketik buat cari Ad Account..."
+                    />
                     {adAccountsError && <p className="text-[10px] text-rose-500 mt-1">{adAccountsError}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 mb-1">Scalev Store ID (untuk FORM SCALEV harian)</label>
+                    <SearchableSelect
+                      value={row.scalevStoreId}
+                      onChange={(id) => updateRow(p.id, { scalevStoreId: id })}
+                      options={scalevStores.map((s) => ({ id: String(s.id), label: s.name }))}
+                      disabled={isLoadingScalevStores}
+                      disabledPlaceholder="Memuat store..."
+                      placeholder="Ketik buat cari store..."
+                    />
+                    {scalevStoresError && <p className="text-[10px] text-rose-500 mt-1">{scalevStoresError}</p>}
                   </div>
                 </div>
 

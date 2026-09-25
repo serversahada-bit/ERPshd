@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Inbox, ArrowRight, Wallet, Users, TrendingUp, Package } from 'lucide-react';
 import { MetaAdsFullRow, formatDisplayValue, formatDisplayDate } from '@/lib/metaAds';
+import ProductSelector from '../ProductSelector';
 
 interface ChartPoint {
   label: string;
@@ -107,11 +108,18 @@ export default function MetaDashboardOverview() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+
+  // Live update: fetch ulang tiap 30 detik selagi halaman ini terbuka, supaya data baru
+  // yang ditambahkan di halaman lain (mis. Meta Ads Data) ikut kelihatan di sini tanpa
+  // perlu refresh manual. `isInitial` cuma true buat load pertama/ganti produk, supaya
+  // polling di background tidak bikin skeleton loading kedip-kedip tiap 30 detik.
   useEffect(() => {
     if (!productId) return;
     let cancelled = false;
-    setIsLoading(true);
-    (async () => {
+
+    const load = async (isInitial: boolean) => {
+      if (isInitial) setIsLoading(true);
       try {
         const res = await fetch(`/api/meta-ads?productId=${productId}`);
         const json = await res.json();
@@ -120,48 +128,93 @@ export default function MetaDashboardOverview() {
           setLoadError(json.error || 'Gagal memuat data.');
           return;
         }
+        setLoadError(null);
         setRows(json.data as MetaAdsFullRow[]);
+        setLastUpdatedAt(new Date());
       } catch {
         if (!cancelled) setLoadError('Terjadi kesalahan jaringan saat memuat data.');
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (isInitial && !cancelled) setIsLoading(false);
       }
-    })();
+    };
+
+    load(true);
+    const interval = setInterval(() => load(false), 30000);
+
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, [productId]);
 
+  // Selalu tampil (termasuk saat loading/belum ada productId) — ProductSelector di sini
+  // yang tugasnya auto-pilih produk pertama & set ?pid= kalau belum ada di URL, jadi tidak
+  // boleh disembunyikan di balik kondisi `!productId` (bisa bikin loading tidak pernah selesai).
+  const header = (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <h3 className="font-bold text-sm sm:text-base text-slate-900">Dashboard Report</h3>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">Live</span>
+        {lastUpdatedAt && (
+          <span className="text-[10px] text-slate-400">
+            Update terakhir: {lastUpdatedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        <ProductSelector />
+        {productId && (
+          <Link
+            href={`/meta/data?pid=${productId}`}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors"
+          >
+            <span>Kelola Data Harian</span>
+            <ArrowRight size={14} />
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+
   if (isLoading || !productId) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-10 flex items-center justify-center gap-2 text-slate-400 text-sm">
-        <Loader2 size={16} className="animate-spin" />
-        <span>Memuat data...</span>
+      <div className="space-y-5">
+        {header}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-10 flex items-center justify-center gap-2 text-slate-400 text-sm">
+          <Loader2 size={16} className="animate-spin" />
+          <span>Memuat data...</span>
+        </div>
       </div>
     );
   }
 
   if (loadError) {
     return (
-      <div className="bg-white rounded-2xl border border-rose-200 shadow-2xs p-6 text-center text-rose-600 text-sm font-semibold">
-        {loadError}
+      <div className="space-y-5">
+        {header}
+        <div className="bg-white rounded-2xl border border-rose-200 shadow-2xs p-6 text-center text-rose-600 text-sm font-semibold">
+          {loadError}
+        </div>
       </div>
     );
   }
 
   if (rows.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-10 flex flex-col items-center justify-center gap-2 text-center">
-        <Inbox size={28} className="text-slate-300" />
-        <p className="text-sm font-semibold text-slate-600">Belum ada data Meta Ads</p>
-        <p className="text-xs text-slate-400 mb-2">Isi data harian dulu di menu Meta Ads (FB & IG).</p>
-        <Link
-          href={`/meta/data?pid=${productId}`}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs transition-colors"
-        >
-          <span>Ke Halaman Input Data</span>
-          <ArrowRight size={14} />
-        </Link>
+      <div className="space-y-5">
+        {header}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-10 flex flex-col items-center justify-center gap-2 text-center">
+          <Inbox size={28} className="text-slate-300" />
+          <p className="text-sm font-semibold text-slate-600">Belum ada data Meta Ads</p>
+          <p className="text-xs text-slate-400 mb-2">Isi data harian dulu di menu Meta Ads (FB & IG).</p>
+          <Link
+            href={`/meta/data?pid=${productId}`}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs transition-colors"
+          >
+            <span>Ke Halaman Input Data</span>
+            <ArrowRight size={14} />
+          </Link>
+        </div>
       </div>
     );
   }
@@ -191,19 +244,7 @@ export default function MetaDashboardOverview() {
 
   return (
     <div className="space-y-5">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="font-bold text-sm sm:text-base text-slate-900">Dashboard Report</h3>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">Live</span>
-        </div>
-        <Link
-          href={`/meta/data?pid=${productId}`}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors shrink-0"
-        >
-          <span>Kelola Data Harian</span>
-          <ArrowRight size={14} />
-        </Link>
-      </div>
+      {header}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon={Wallet} label="Total Spend Iklan" value={formatDisplayValue(totalSpend, 'currency')} accent="bg-blue-50 text-blue-600" />

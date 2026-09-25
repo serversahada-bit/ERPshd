@@ -4,7 +4,11 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
   // Guard supaya tidak dobel-jadwal saat hot-reload di `next dev`.
-  const g = globalThis as unknown as { __metaAdsImportScheduled?: boolean; __metaTestingSyncScheduled?: boolean };
+  const g = globalThis as unknown as {
+    __metaAdsImportScheduled?: boolean;
+    __metaTestingSyncScheduled?: boolean;
+    __metaAdsAutoSyncScheduled?: boolean;
+  };
 
   if (!g.__metaAdsImportScheduled) {
     g.__metaAdsImportScheduled = true;
@@ -16,5 +20,11 @@ export async function register(): Promise<void> {
     g.__metaTestingSyncScheduled = true;
     const { scheduleMetaTestingAutoSync } = await import('./lib/metaTestingScheduler');
     scheduleMetaTestingAutoSync();
+  }
+
+  if (!g.__metaAdsAutoSyncScheduled) {
+    g.__metaAdsAutoSyncScheduled = true;
+    const { scheduleMetaAdsAutoSyncFromMeta } = await import('./lib/metaAdsAutoSyncScheduler');
+    scheduleMetaAdsAutoSyncFromMeta();
   }
 }

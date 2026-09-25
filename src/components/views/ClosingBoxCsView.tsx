@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronDown, ChevronRight, ChevronsUpDown, Inbox, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { CS_COUNT_FIELDS, CS_METRIC_FIELDS, formatCsMetric, isPositiveId, type ClosingBoxCsRecord } from '@/lib/closingBoxCs';
+import ProductSelector from '../ProductSelector';
 import ClosingBoxCsFormModal from './ClosingBoxCsFormModal';
 
 const number = (value: number) => value.toLocaleString('id-ID', { maximumFractionDigits: 2 });
@@ -13,9 +14,18 @@ export default function ClosingBoxCsView() {
   const searchParams = useSearchParams();
   const productId = Number(searchParams.get('pid'));
   // Remount product-specific state so an open form or a slow request cannot leak across products.
-  return isPositiveId(productId)
-    ? <ClosingBoxCsTable key={productId} productId={productId} />
-    : <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Pilih atau tambahkan produk di bagian atas untuk mengelola Closing Box CS.</div>;
+  return isPositiveId(productId) ? (
+    <ClosingBoxCsTable key={productId} productId={productId} />
+  ) : (
+    <div className="space-y-5">
+      <div className="flex justify-end">
+        <ProductSelector />
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+        Pilih atau tambahkan produk di atas untuk mengelola Closing Box CS.
+      </div>
+    </div>
+  );
 }
 
 function ClosingBoxCsTable({ productId }: { productId: number }) {
@@ -80,7 +90,10 @@ function ClosingBoxCsTable({ productId }: { productId: number }) {
           <h1 className="text-base font-bold text-slate-900">Closing Box CS</h1>
           <p className="mt-1 text-xs text-slate-500">Pencatatan lead, closing, dan box CS per tanggal, platform, dan advertiser.</p>
         </div>
-        <button onClick={() => setModal({ data: null })} disabled={deleting !== null} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50"><Plus size={15} />Tambah Data</button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <ProductSelector />
+          <button onClick={() => setModal({ data: null })} disabled={deleting !== null} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50"><Plus size={15} />Tambah Data</button>
+        </div>
       </div>
       {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}<button onClick={() => setRevision((value) => value + 1)} className="shrink-0 font-semibold underline">Coba lagi</button></div>}
       {loading ? (

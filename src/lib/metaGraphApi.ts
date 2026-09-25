@@ -52,7 +52,15 @@ export interface MetaAdAccount {
   name: string;
 }
 
-/** Daftar semua Ad Account yang bisa diakses token ini — dipakai buat dropdown pilih Meta Ad Account ID di Master Produk, supaya tidak perlu cari manual ID-nya di Ads Manager. */
+/**
+ * Daftar semua Ad Account yang bisa diakses token ini — dipakai buat dropdown (searchable)
+ * pilih Meta Ad Account ID di Master Produk, supaya tidak perlu cari manual ID-nya di Ads
+ * Manager. Sengaja TIDAK ambil info Business Manager (field `business{id,name}` butuh
+ * permission `business_management`, jauh lebih berisiko daripada `ads_read` — kalau token
+ * ini bocor, `business_management` bisa dipakai buat ubah akses/aset bisnis, bukan cuma
+ * baca data) — dropdown searchable di UI sudah cukup buat masalah daftar panjang, tanpa
+ * perlu permission tambahan itu.
+ */
 export async function fetchAdAccounts(accessToken: string): Promise<MetaAdAccount[]> {
   const data = await graphGet<{ data: { account_id: string; name: string }[] }>('/me/adaccounts', accessToken, {
     fields: 'account_id,name',
@@ -105,6 +113,62 @@ export async function fetchCampaignInsights(accessToken: string, adAccountId: st
     ctr: Number(row.ctr) || 0,
     cpm: Number(row.cpm) || 0,
   }));
+}
+
+export interface AccountDailyInsight {
+  spend: number;
+  reach: number;
+  impressions: number;
+  linkClicks: number;
+  viewContent: number;
+  addToCart: number;
+  initiateCheckout: number;
+}
+
+interface DailyInsightAction {
+  action_type: string;
+  value: string;
+}
+
+function sumDailyAction(actions: DailyInsightAction[] | undefined, types: string[]): number {
+  if (!actions) return 0;
+  return actions.filter((a) => types.includes(a.action_type)).reduce((sum, a) => sum + (Number(a.value) || 0), 0);
+}
+
+/**
+ * Ambil ringkasan performa SATU AKUN iklan untuk SATU hari spesifik — dipakai buat
+ * auto-isi field Spend Iklan/Jangkauan/Impresi/Klik Tautan/Tayangan Konten/Add To
+ * Chart/IC Form di form Tambah Data Meta Ads. Field lain (Form Scalev, WA Iklan, dst)
+ * tetap manual karena definisinya belum dikonfirmasi user.
+ * - "Klik Tautan" pakai inline_link_clicks (klik ke link tujuan), bukan field "clicks"
+ *   umum yang juga menghitung klik lain (like, comment, dsb).
+ * - "Tayangan Konten"/"Add To Chart"/"IC Form" ternyata funnel e-commerce standar Meta
+ *   Pixel (VC/ATC/IC = View Content/Add To Cart/Initiate Checkout, dikonfirmasi user
+ *   dari pola nama "Rasio VC >70%" dst) — pakai action_type standar Meta, keduanya versi
+ *   omni (lintas kanal) dan versi pixel biasa dijumlah supaya konsisten dengan sumber apa
+ *   pun kejadiannya tercatat.
+ */
+export async function fetchAccountDailyInsight(accessToken: string, adAccountId: string, date: string): Promise<AccountDailyInsight> {
+  const id = normalizeAdAccountId(adAccountId);
+  const data = await graphGet<{
+    data: { spend?: string; reach?: string; impressions?: string; inline_link_clicks?: string; actions?: DailyInsightAction[] }[];
+  }>(`/${id}/insights`, accessToken, {
+    time_range: JSON.stringify({ since: date, until: date }),
+    fields: 'spend,reach,impressions,inline_link_clicks,actions',
+  });
+
+  const row = data.data?.[0];
+  if (!row) return { spend: 0, reach: 0, impressions: 0, linkClicks: 0, viewContent: 0, addToCart: 0, initiateCheckout: 0 };
+
+  return {
+    spend: Number(row.spend) || 0,
+    reach: Number(row.reach) || 0,
+    impressions: Number(row.impressions) || 0,
+    linkClicks: Number(row.inline_link_clicks) || 0,
+    viewContent: sumDailyAction(row.actions, ['view_content', 'omni_view_content']),
+    addToCart: sumDailyAction(row.actions, ['add_to_cart', 'omni_add_to_cart']),
+    initiateCheckout: sumDailyAction(row.actions, ['initiate_checkout', 'omni_initiated_checkout']),
+  };
 }
 
 export interface AdSearchResult {

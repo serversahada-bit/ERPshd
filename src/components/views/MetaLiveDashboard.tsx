@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, PlugZap, CheckCircle2, RefreshCw, Settings2, Download } from 'lucide-react';
 import { MetaAdsProduct } from '@/lib/metaAdsProducts';
+import ProductSelector from '../ProductSelector';
+import SearchableSelect from './SearchableSelect';
 
 interface CampaignInsight {
   campaignId: string;
@@ -144,22 +146,14 @@ function SetupForm({
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1.5">Ad Account ID (khusus produk ini)</label>
           {hasGlobalToken && !accountsError ? (
-            <select
+            <SearchableSelect
               value={adAccountId}
-              onChange={(e) => setAdAccountId(e.target.value)}
+              onChange={setAdAccountId}
+              options={adAccounts.map((a) => ({ id: a.id, label: a.name }))}
               disabled={isLoadingAccounts}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
-            >
-              <option value="">{isLoadingAccounts ? 'Memuat akun...' : '- Pilih Ad Account -'}</option>
-              {adAccountId && !adAccounts.some((a) => a.id === adAccountId) && (
-                <option value={adAccountId}>{adAccountId} (tidak ditemukan di daftar)</option>
-              )}
-              {adAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} ({a.id})
-                </option>
-              ))}
-            </select>
+              disabledPlaceholder="Memuat akun..."
+              placeholder="Ketik buat cari Ad Account..."
+            />
           ) : (
             <input
               type="text"
@@ -280,24 +274,39 @@ export default function MetaLiveDashboard() {
     }
   };
 
+  // Selalu tampil (termasuk saat checking/belum ada productId) — ProductSelector di sini
+  // yang tugasnya auto-pilih produk pertama & set ?pid= kalau belum ada di URL, jadi tidak
+  // boleh disembunyikan di balik kondisi `!productId` (bisa bikin loading tidak pernah selesai).
+  const productHeader = (
+    <div className="flex justify-end">
+      <ProductSelector />
+    </div>
+  );
+
   if (!productId || checking) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-10 flex items-center justify-center gap-2 text-slate-400 text-sm">
-        <Loader2 size={16} className="animate-spin" />
-        <span>Memeriksa koneksi...</span>
+      <div className="space-y-5">
+        {productHeader}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-10 flex items-center justify-center gap-2 text-slate-400 text-sm">
+          <Loader2 size={16} className="animate-spin" />
+          <span>Memeriksa koneksi...</span>
+        </div>
       </div>
     );
   }
 
   if (!connected) {
     return (
-      <SetupForm
-        productId={productId}
-        productNama={product?.nama || ''}
-        hasGlobalToken={hasGlobalToken}
-        existingAdAccountId={product?.metaAdAccountId || ''}
-        onConnected={() => checkSettings()}
-      />
+      <div className="space-y-5">
+        {productHeader}
+        <SetupForm
+          productId={productId}
+          productNama={product?.nama || ''}
+          hasGlobalToken={hasGlobalToken}
+          existingAdAccountId={product?.metaAdAccountId || ''}
+          onConnected={() => checkSettings()}
+        />
+      </div>
     );
   }
 
@@ -315,6 +324,7 @@ export default function MetaLiveDashboard() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <ProductSelector />
           <select
             value={datePreset}
             onChange={(e) => setDatePreset(e.target.value)}
